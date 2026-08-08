@@ -1,0 +1,64 @@
+# Maps each agent role to one or more providers, tried in order (fallback
+# chain). Any provider exposing an OpenAI-compatible /chat/completions
+# endpoint works here — OpenRouter, Groq, Together, Cerebras, a local
+# Ollama/vLLM server, etc.
+#
+# IMPORTANT: free-tier model lineups rotate frequently (OpenRouter's ":free"
+# roster in particular changes week to week — models get added, repriced, or
+# pulled with no notice). The model IDs below are a working starting point,
+# not a permanent list. Before relying on this, check:
+#   - https://openrouter.ai/models?fmt=cards&order=pricing-low-to-high (filter: Free)
+#   - https://console.groq.com/docs/models
+#
+# Groq's free tier (no credit card) is currently the more stable of the two —
+# rate-limited (~30 req/min, ~14,400 req/day depending on model) but it
+# doesn't rotate model availability the way OpenRouter's free routes do. That
+# makes it a reasonable default fallback under the OpenRouter entries below.
+
+agents:
+  architect:
+    providers:
+      - provider: openrouter
+        base_url: https://openrouter.ai/api/v1
+        api_key_env: OPENROUTER_API_KEY
+        model: meta-llama/llama-3.3-70b-instruct:free
+      - provider: groq
+        base_url: https://api.groq.com/openai/v1
+        api_key_env: GROQ_API_KEY
+        model: llama-3.3-70b-versatile
+
+  planner:
+    providers:
+      - provider: groq
+        base_url: https://api.groq.com/openai/v1
+        api_key_env: GROQ_API_KEY
+        model: llama-3.3-70b-versatile
+
+  developer:
+    providers:
+      - provider: openrouter
+        base_url: https://openrouter.ai/api/v1
+        api_key_env: OPENROUTER_API_KEY
+        model: qwen/qwen3-coder:free   # verify slug at openrouter.ai/models — coder-tuned free models rotate often
+      - provider: groq   # fallback once the OpenRouter free route is rate-limited or pulled
+        base_url: https://api.groq.com/openai/v1
+        api_key_env: GROQ_API_KEY
+        model: llama-3.3-70b-versatile
+
+  tester:
+    providers:
+      - provider: groq
+        base_url: https://api.groq.com/openai/v1
+        api_key_env: GROQ_API_KEY
+        model: llama-3.1-8b-instant   # tester doesn't need a strong model, just fast — this one has the highest free daily quota on Groq
+
+  reviewer:
+    providers:
+      - provider: openrouter
+        base_url: https://openrouter.ai/api/v1
+        api_key_env: OPENROUTER_API_KEY
+        model: meta-llama/llama-3.3-70b-instruct:free
+      - provider: groq
+        base_url: https://api.groq.com/openai/v1
+        api_key_env: GROQ_API_KEY
+        model: llama-3.3-70b-versatile
