@@ -78,7 +78,7 @@ Two workflows ship in `.github/workflows/`:
 - **`agent-run.yml`** — runs the agents against this repo itself (self-improvement). Trigger from the Actions tab, type a task, it commits/pushes/PRs here.
 - **`agent-run-external.yml`** — keeps this repo as the "controller" and points the agents at a *different* repo (your actual product). That repo gets the branch, commits, and PR. Requires a `TARGET_REPO_PAT` secret (a token scoped to the target repo, since the default `GITHUB_TOKEN` can only act on the repo the workflow lives in) — setup instructions are in the workflow file's header comment.
 
-Either way, add `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `GEMINI_API_KEY` as repository secrets first (Settings → Secrets and variables → Actions). Never commit real keys — `.env` is gitignored for local runs.
+Either way, add `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `GEMINI_API_KEY` / `CEREBRAS_API_KEY` / `DEEPINFRA_API_KEY` as repository secrets first (Settings → Secrets and variables → Actions) — only add the ones you actually have keys for, a missing one just gets skipped in the fallback chain. Never commit real keys — `.env` is gitignored for local runs.
 
 ## Safety note
 

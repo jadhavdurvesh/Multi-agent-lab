@@ -1,30 +1,31 @@
 # Maps each agent role to one or more providers, tried in order (fallback
 # chain). Any provider exposing an OpenAI-compatible /chat/completions
-# endpoint works here — OpenRouter, Groq, Together, Cerebras, a local
-# Ollama/vLLM server, etc.
+# endpoint works here — OpenRouter, Groq, Cerebras, DeepInfra, Together, a
+# local Ollama/vLLM server, etc.
 #
 # IMPORTANT: free-tier model lineups rotate frequently (OpenRouter's ":free"
 # roster in particular changes week to week — models get added, repriced, or
 # pulled with no notice). The model IDs below are a working starting point,
-# not a permanent list. Before relying on this, check:
-#   - https://openrouter.ai/models?fmt=cards&order=pricing-low-to-high (filter: Free)
-#   - https://console.groq.com/docs/models
+# not a permanent list. Before relying on this, check each provider's docs.
 #
-# Groq's free tier (no credit card) is currently the more stable of the two —
-# rate-limited (~30 req/min, ~14,400 req/day depending on model) but it
-# doesn't rotate model availability the way OpenRouter's free routes do. That
-# makes it a reasonable default fallback under the OpenRouter entries below.
-#
-# Gemini (Google AI Studio) also has a genuine free tier, no credit card, and
-# ships an official OpenAI-compatible endpoint, so it drops straight into
-# this same provider list — no code changes needed. Get a key at
-# aistudio.google.com/apikey. Two caveats before you rely on it:
-#   - Free-tier prompts may be used by Google to improve their products
-#     (their policy is explicit about this vs. other providers) — don't
-#     point it at anything sensitive.
-#   - Rate limits and exact model names shift; check
-#     ai.google.dev/gemini-api/docs/rate-limits and
-#     ai.google.dev/gemini-api/docs/models before a real run.
+# What's actually free here vs. not, since that affects fallback order —
+# free tiers go first, paid-but-cheap goes last as a safety net rather than
+# a default:
+#   - OpenRouter: ":free"-suffixed models are free but rotate weekly.
+#     openrouter.ai/models (filter: Free)
+#   - Groq: genuine free tier, no card. Was cut in 2026 — most models are
+#     now ~1,000 requests/day (down from 14,400). console.groq.com/docs/models
+#   - Gemini (Google AI Studio): genuine free tier, no card, official
+#     OpenAI-compat endpoint. Free-tier prompts may be used by Google to
+#     improve their products — don't point it at anything sensitive.
+#     aistudio.google.com/apikey · ai.google.dev/gemini-api/docs/rate-limits
+#   - Cerebras: genuine free tier, no card, and the fastest raw throughput
+#     of the group. cloud.cerebras.ai · inference-docs.cerebras.ai
+#   - DeepInfra: NOT a free tier — pay-per-token (cheap: fractions of a
+#     cent per 1K tokens), needs a card/prepay on the account. Listed last
+#     in each chain so it only gets used once every free option above is
+#     rate-limited, not as a first choice. api.deepinfra.com ·
+#     docs.deepinfra.com/chat/overview
 
 agents:
   architect:
@@ -37,10 +38,18 @@ agents:
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
         model: gemini-2.5-flash   # verify current free-tier model at ai.google.dev/gemini-api/docs/models
+      - provider: cerebras
+        base_url: https://api.cerebras.ai/v1
+        api_key_env: CEREBRAS_API_KEY
+        model: llama-3.3-70b   # verify current catalog at inference-docs.cerebras.ai
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
+      - provider: deepinfra   # paid fallback, last resort — see note above
+        base_url: https://api.deepinfra.com/v1/openai
+        api_key_env: DEEPINFRA_API_KEY
+        model: meta-llama/Llama-3.3-70B-Instruct
 
   planner:
     providers:
@@ -48,6 +57,14 @@ agents:
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
+      - provider: cerebras
+        base_url: https://api.cerebras.ai/v1
+        api_key_env: CEREBRAS_API_KEY
+        model: llama-3.3-70b
+      - provider: deepinfra   # paid fallback, last resort — see note above
+        base_url: https://api.deepinfra.com/v1/openai
+        api_key_env: DEEPINFRA_API_KEY
+        model: meta-llama/Llama-3.3-70B-Instruct
 
   developer:
     providers:
@@ -55,10 +72,18 @@ agents:
         base_url: https://openrouter.ai/api/v1
         api_key_env: OPENROUTER_API_KEY
         model: qwen/qwen3-coder:free   # verify slug at openrouter.ai/models — coder-tuned free models rotate often
-      - provider: groq   # fallback once the OpenRouter free route is rate-limited or pulled
+      - provider: cerebras   # fallback once the OpenRouter free route is rate-limited or pulled
+        base_url: https://api.cerebras.ai/v1
+        api_key_env: CEREBRAS_API_KEY
+        model: qwen-3-32b   # verify current catalog at inference-docs.cerebras.ai
+      - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
+      - provider: deepinfra   # paid fallback, last resort — see note above; DeepSeek-V3 is a genuinely strong coder model if it comes to this
+        base_url: https://api.deepinfra.com/v1/openai
+        api_key_env: DEEPINFRA_API_KEY
+        model: deepseek-ai/DeepSeek-V3
 
   tester:
     providers:
@@ -66,6 +91,10 @@ agents:
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.1-8b-instant   # tester doesn't need a strong model, just fast — this one has the highest free daily quota on Groq
+      - provider: cerebras
+        base_url: https://api.cerebras.ai/v1
+        api_key_env: CEREBRAS_API_KEY
+        model: llama3.1-8b
 
   reviewer:
     providers:
@@ -77,7 +106,15 @@ agents:
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
         model: gemini-2.5-flash
+      - provider: cerebras
+        base_url: https://api.cerebras.ai/v1
+        api_key_env: CEREBRAS_API_KEY
+        model: llama-3.3-70b
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
+      - provider: deepinfra   # paid fallback, last resort — see note above
+        base_url: https://api.deepinfra.com/v1/openai
+        api_key_env: DEEPINFRA_API_KEY
+        model: meta-llama/Llama-3.3-70B-Instruct

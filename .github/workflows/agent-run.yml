@@ -57,6 +57,8 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # lets `gh pr create` auth itself
         run: |
           BRANCH="${{ inputs.branch }}-${{ github.run_number }}"
