@@ -1,6 +1,6 @@
 # Maps each agent role to one or more providers, tried in order (fallback
 # chain). Any provider exposing an OpenAI-compatible /chat/completions
-# endpoint works here — OpenRouter, Groq, Cerebras, DeepInfra, Together, a
+# endpoint works here — OpenRouter, Groq, Cerebras, Gemini, Together, a
 # local Ollama/vLLM server, etc.
 #
 # IMPORTANT: free-tier model lineups rotate frequently (OpenRouter's ":free"
@@ -8,24 +8,23 @@
 # pulled with no notice). The model IDs below are a working starting point,
 # not a permanent list. Before relying on this, check each provider's docs.
 #
-# What's actually free here vs. not, since that affects fallback order —
-# free tiers go first, paid-but-cheap goes last as a safety net rather than
-# a default:
+# All four providers below have a genuine free tier, no card required:
 #   - OpenRouter: ":free"-suffixed models are free but rotate weekly.
 #     openrouter.ai/models (filter: Free)
-#   - Groq: genuine free tier, no card. Was cut in 2026 — most models are
-#     now ~1,000 requests/day (down from 14,400). console.groq.com/docs/models
-#   - Gemini (Google AI Studio): genuine free tier, no card, official
-#     OpenAI-compat endpoint. Free-tier prompts may be used by Google to
-#     improve their products — don't point it at anything sensitive.
+#   - Groq: no card. Was cut in 2026 — most models are now ~1,000
+#     requests/day (down from 14,400). console.groq.com/docs/models
+#   - Gemini (Google AI Studio): official OpenAI-compat endpoint.
+#     Free-tier prompts may be used by Google to improve their products —
+#     don't point it at anything sensitive.
 #     aistudio.google.com/apikey · ai.google.dev/gemini-api/docs/rate-limits
-#   - Cerebras: genuine free tier, no card, and the fastest raw throughput
-#     of the group. cloud.cerebras.ai · inference-docs.cerebras.ai
-#   - DeepInfra: NOT a free tier — pay-per-token (cheap: fractions of a
-#     cent per 1K tokens), needs a card/prepay on the account. Listed last
-#     in each chain so it only gets used once every free option above is
-#     rate-limited, not as a first choice. api.deepinfra.com ·
-#     docs.deepinfra.com/chat/overview
+#   - Cerebras: fastest raw throughput of the group.
+#     cloud.cerebras.ai · inference-docs.cerebras.ai
+#
+# DeepInfra was tried and dropped from these chains on purpose — it's not
+# actually a free tier (pay-per-token, needs a card/prepay), so it just
+# fails with 402 Payment Required on an unfunded account. Add it back the
+# same way as the others (provider/base_url/api_key_env/model block) if you
+# ever add billing there.
 
 agents:
   architect:
@@ -46,10 +45,6 @@ agents:
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
-      - provider: deepinfra   # paid fallback, last resort — see note above
-        base_url: https://api.deepinfra.com/v1/openai
-        api_key_env: DEEPINFRA_API_KEY
-        model: meta-llama/Llama-3.3-70B-Instruct
 
   planner:
     providers:
@@ -61,10 +56,6 @@ agents:
         base_url: https://api.cerebras.ai/v1
         api_key_env: CEREBRAS_API_KEY
         model: llama-3.3-70b
-      - provider: deepinfra   # paid fallback, last resort — see note above
-        base_url: https://api.deepinfra.com/v1/openai
-        api_key_env: DEEPINFRA_API_KEY
-        model: meta-llama/Llama-3.3-70B-Instruct
 
   developer:
     providers:
@@ -80,10 +71,6 @@ agents:
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
-      - provider: deepinfra   # paid fallback, last resort — see note above; DeepSeek-V3 is a genuinely strong coder model if it comes to this
-        base_url: https://api.deepinfra.com/v1/openai
-        api_key_env: DEEPINFRA_API_KEY
-        model: deepseek-ai/DeepSeek-V3
 
   tester:
     providers:
@@ -114,7 +101,3 @@ agents:
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
-      - provider: deepinfra   # paid fallback, last resort — see note above
-        base_url: https://api.deepinfra.com/v1/openai
-        api_key_env: DEEPINFRA_API_KEY
-        model: meta-llama/Llama-3.3-70B-Instruct
