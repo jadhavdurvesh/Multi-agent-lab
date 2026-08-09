@@ -108,6 +108,31 @@ Self-contained: checks out this repo, agents work on it, PR opens here.
 Needs `contents: write` + `pull-requests: write`, which the built-in
 `GITHUB_TOKEN` already has for its own repo — no extra secret to set up.
 
+It now supports both:
+
+- **Manual runs** (`workflow_dispatch`) with task/branch/test-command inputs.
+- **Hourly runs** (`schedule` at `0 * * * *`) that pull work from an issue queue.
+
+For scheduled runs, task selection is:
+
+1. Query open issues labeled `agent-task` (oldest first).
+2. Skip cleanly if no eligible issue exists.
+3. Skip cleanly if an open PR already exists on an `agent/task-*` branch (to
+   avoid overlapping autonomous streams).
+4. Pick one issue, remove `agent-task`, add `agent-task-running`, and use the
+   **issue title** as `--task`.
+
+When the run finishes, the workflow marks task status on that issue:
+
+- **Success**: remove `agent-task-running`, add `agent-task-done`, comment with
+  the run number.
+- **Failure**: remove `agent-task-running`, re-add `agent-task`, comment that it
+  was re-queued.
+
+To queue work for automation, open an issue and add the `agent-task` label.
+To pause automation, disable the workflow or remove the `schedule` trigger from
+`.github/workflows/agent-run.yml`.
+
 ### `agent-run-external.yml` — points the agents at a *different* repo
 
 This repo stays the "controller" (supplies the code that runs) while a
@@ -119,6 +144,25 @@ scoped to it. Setup is a fine-grained PAT (Contents + Pull requests: Read and
 write, repository access limited to the target repo) saved as a repository
 secret named `TARGET_REPO_PAT` — full steps are in the workflow file's header
 comment.
+
+This workflow now has:
+
+- **Manual mode** (`workflow_dispatch`) with `target_repo` defaulting to
+  `jadhavdurvesh/psychic-dollop`.
+- **Hourly mode** (`schedule` at `15 * * * *`) that also targets
+  `jadhavdurvesh/psychic-dollop` by default.
+
+For scheduled runs in the target repo:
+
+1. The workflow checks for open issues labeled `agent-task` (oldest first).
+2. It skips cleanly if none exist.
+3. It skips cleanly if an open PR already exists on an `agent/task-*` branch.
+4. It moves the selected issue to `agent-task-running` and uses the issue title
+   as the task.
+5. On success it adds `agent-task-done`; on failure it re-adds `agent-task`.
+
+So to drive automatic hourly work, create issues in
+`jadhavdurvesh/psychic-dollop` with the `agent-task` label.
 
 ### Secrets either workflow needs
 
