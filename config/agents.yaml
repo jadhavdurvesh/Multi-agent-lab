@@ -14,6 +14,17 @@
 # rate-limited (~30 req/min, ~14,400 req/day depending on model) but it
 # doesn't rotate model availability the way OpenRouter's free routes do. That
 # makes it a reasonable default fallback under the OpenRouter entries below.
+#
+# Gemini (Google AI Studio) also has a genuine free tier, no credit card, and
+# ships an official OpenAI-compatible endpoint, so it drops straight into
+# this same provider list — no code changes needed. Get a key at
+# aistudio.google.com/apikey. Two caveats before you rely on it:
+#   - Free-tier prompts may be used by Google to improve their products
+#     (their policy is explicit about this vs. other providers) — don't
+#     point it at anything sensitive.
+#   - Rate limits and exact model names shift; check
+#     ai.google.dev/gemini-api/docs/rate-limits and
+#     ai.google.dev/gemini-api/docs/models before a real run.
 
 agents:
   architect:
@@ -22,6 +33,10 @@ agents:
         base_url: https://openrouter.ai/api/v1
         api_key_env: OPENROUTER_API_KEY
         model: meta-llama/llama-3.3-70b-instruct:free
+      - provider: gemini
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY
+        model: gemini-2.5-flash   # verify current free-tier model at ai.google.dev/gemini-api/docs/models
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
@@ -58,6 +73,10 @@ agents:
         base_url: https://openrouter.ai/api/v1
         api_key_env: OPENROUTER_API_KEY
         model: meta-llama/llama-3.3-70b-instruct:free
+      - provider: gemini
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY
+        model: gemini-2.5-flash
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY

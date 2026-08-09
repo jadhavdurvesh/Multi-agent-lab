@@ -27,8 +27,17 @@ tests/        unit tests for the tool layer (pytest -q)
    order, so a second free tier can pick up when the first is rate-limited.
    **The model IDs shipped here are a starting point, not a guarantee** —
    OpenRouter's free-model roster in particular rotates weekly. Check
-   openrouter.ai/models (filter: Free) and console.groq.com/docs/models
-   before a real run.
+   openrouter.ai/models (filter: Free), console.groq.com/docs/models, and
+   ai.google.dev/gemini-api/docs/models before a real run.
+
+   Any provider with an OpenAI-compatible `/chat/completions` endpoint works
+   here without touching `providers/openai_compatible.py` — just add another
+   `provider:`/`base_url:`/`api_key_env:`/`model:` block. Gemini (Google AI
+   Studio) is wired in as an example, and Cerebras, Together, Mistral, and
+   NVIDIA NIM all have genuine no-card free tiers if you want more fallback
+   depth — see github.com/cheahjs/free-llm-api-resources for current limits,
+   since they change often and some of the "free API" roundups floating
+   around are just marketing pages for paid gateways.
 
 ## Run
 
