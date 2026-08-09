@@ -1,8 +1,5 @@
 name: Run multi-agent-lab
 
-# Manual trigger only, on purpose: this agent runs real shell commands and
-# pushes commits autonomously. Wire up schedule/issue triggers later once
-# you trust it — see the commented block at the bottom.
 on:
   workflow_dispatch:
     inputs:
@@ -20,10 +17,13 @@ on:
         required: false
         type: string
         default: "pytest -q"
+  schedule:
+    - cron: "0 * * * *"
 
 permissions:
   contents: write        # push the agent's branch
   pull-requests: write    # open the PR
+  issues: write           # pull tasks from issue queue + mark status
 
 concurrency:
   group: multi-agent-lab-run
@@ -52,7 +52,113 @@ jobs:
           git config user.name "multi-agent-lab bot"
           git config user.email "actions@users.noreply.github.com"
 
+      - name: Derive task
+        id: derive-task
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = core.getInput('branch') || 'agent/task';
+            const testCommand = core.getInput('test_command') || 'pytest -q';
+            const eventName = context.eventName;
+
+            core.setOutput('branch', branch);
+            core.setOutput('test_command', testCommand);
+
+            if (eventName === 'workflow_dispatch') {
+              const task = core.getInput('task').trim();
+              if (!task) {
+                core.setFailed('Manual runs require a non-empty task input.');
+                return;
+              }
+              core.setOutput('should_run', 'true');
+              core.setOutput('task', task);
+              core.setOutput('issue_number', '');
+              core.setOutput('reason', 'Manual task provided.');
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const queueLabel = 'agent-task';
+            const runningLabel = 'agent-task-running';
+
+            const openPrs = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100
+            });
+            const hasActiveAgentPr = openPrs.some((pr) => pr.head.ref.startsWith(`${branch}-`));
+            if (hasActiveAgentPr) {
+              core.setOutput('should_run', 'false');
+              core.setOutput('task', '');
+              core.setOutput('issue_number', '');
+              core.setOutput('reason', `Skipped: open agent PR already exists for prefix ${branch}-`);
+              return;
+            }
+
+            const queueIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              labels: queueLabel,
+              sort: 'created',
+              direction: 'asc',
+              per_page: 100
+            });
+            const nextIssue = queueIssues.find((issue) => !issue.pull_request);
+
+            if (!nextIssue) {
+              core.setOutput('should_run', 'false');
+              core.setOutput('task', '');
+              core.setOutput('issue_number', '');
+              core.setOutput('reason', `Skipped: no open issues labeled ${queueLabel}.`);
+              return;
+            }
+
+            const task = (nextIssue.title || '').trim();
+            if (!task) {
+              core.setOutput('should_run', 'false');
+              core.setOutput('task', '');
+              core.setOutput('issue_number', '');
+              core.setOutput('reason', `Skipped: issue #${nextIssue.number} has an empty title.`);
+              return;
+            }
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: nextIssue.number,
+              labels: [runningLabel]
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner,
+                repo,
+                issue_number: nextIssue.number,
+                name: queueLabel
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: nextIssue.number,
+              body: `Picked up by scheduled workflow run #${context.runNumber}.`
+            });
+
+            core.setOutput('should_run', 'true');
+            core.setOutput('task', task);
+            core.setOutput('issue_number', String(nextIssue.number));
+            core.setOutput('reason', `Scheduled task picked from issue #${nextIssue.number}.`);
+
+      - name: Explain skip reason
+        if: steps.derive-task.outputs.should_run != 'true'
+        run: echo "${{ steps.derive-task.outputs.reason }}"
+
       - name: Run agents
+        if: steps.derive-task.outputs.should_run == 'true'
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -60,13 +166,66 @@ jobs:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # lets `gh pr create` auth itself
         run: |
-          BRANCH="${{ inputs.branch }}-${{ github.run_number }}"
+          BRANCH="${{ steps.derive-task.outputs.branch }}-${{ github.run_number }}"
           python main.py \
             --repo "$GITHUB_WORKSPACE" \
-            --task "${{ inputs.task }}" \
+            --task "${{ steps.derive-task.outputs.task }}" \
             --branch "$BRANCH" \
-            --test-command "${{ inputs.test_command }}" \
+            --test-command "${{ steps.derive-task.outputs.test_command }}" \
             --autonomous
+
+      - name: Mark scheduled task status
+        if: always() && github.event_name == 'schedule' && steps.derive-task.outputs.issue_number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issueNumber = Number('${{ steps.derive-task.outputs.issue_number }}');
+            const queueLabel = 'agent-task';
+            const runningLabel = 'agent-task-running';
+            const doneLabel = 'agent-task-done';
+            const conclusion = '${{ job.status }}';
+
+            try {
+              await github.rest.issues.removeLabel({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                name: runningLabel
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            if (conclusion === 'success') {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                labels: [doneLabel]
+              });
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                body: `Completed by scheduled workflow run #${context.runNumber}.`
+              });
+              return;
+            }
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              labels: [queueLabel]
+            });
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              body: `Run #${context.runNumber} ended with status: ${conclusion}. Re-queued for retry.`
+            });
 
       - name: Upload run logs
         if: always()
@@ -77,16 +236,3 @@ jobs:
             usage.json
             .agent/history/*.jsonl
           if-no-files-found: ignore
-
-# --- Optional: auto-trigger from a labeled issue instead of/alongside the
-# manual dispatch above. Uncomment and adjust if you want "open an issue,
-# label it agent-task, agents pick it up" instead of clicking Run workflow.
-#
-#   issues:
-#     types: [labeled]
-#
-# then, in a step before "Run agents":
-#   - name: Derive task from issue
-#     if: github.event.label.name == 'agent-task'
-#     run: echo "TASK=${{ github.event.issue.title }}" >> "$GITHUB_ENV"
-# and swap --task "${{ inputs.task }}" for --task "$TASK"
