@@ -1,0 +1,1 @@
+[MOCK RESPONSE from openrouter] system='You are the Architect agent in a multi-agent coding system.\n' user='Task:\nAdd a health check endpoint\n\nRepository files:\n.env.ex'
