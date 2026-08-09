@@ -66,7 +66,7 @@ agents:
       - provider: cerebras   # fallback once the OpenRouter free route is rate-limited or pulled
         base_url: https://api.cerebras.ai/v1
         api_key_env: CEREBRAS_API_KEY
-        model: qwen-3-32b   # verify current catalog at inference-docs.cerebras.ai
+        model: llama-3.3-70b   # matches the known-working Cerebras model used by other agents
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
