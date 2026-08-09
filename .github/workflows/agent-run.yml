@@ -1,0 +1,90 @@
+name: Run multi-agent-lab
+
+# Manual trigger only, on purpose: this agent runs real shell commands and
+# pushes commits autonomously. Wire up schedule/issue triggers later once
+# you trust it — see the commented block at the bottom.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "What should the agents build/fix?"
+        required: true
+        type: string
+      branch:
+        description: "Branch the agents will work on"
+        required: false
+        type: string
+        default: "agent/task"
+      test_command:
+        description: "Command the Tester agent runs"
+        required: false
+        type: string
+        default: "pytest -q"
+
+permissions:
+  contents: write        # push the agent's branch
+  pull-requests: write    # open the PR
+
+concurrency:
+  group: multi-agent-lab-run
+  cancel-in-progress: false   # never cancel a run mid-commit
+
+jobs:
+  run-agents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # agents diff against main, so full history
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Configure git identity for agent commits
+        run: |
+          git config user.name "multi-agent-lab bot"
+          git config user.email "actions@users.noreply.github.com"
+
+      - name: Run agents
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # lets `gh pr create` auth itself
+        run: |
+          BRANCH="${{ inputs.branch }}-${{ github.run_number }}"
+          python main.py \
+            --repo "$GITHUB_WORKSPACE" \
+            --task "${{ inputs.task }}" \
+            --branch "$BRANCH" \
+            --test-command "${{ inputs.test_command }}" \
+            --autonomous
+
+      - name: Upload run logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-run-${{ github.run_number }}
+          path: |
+            usage.json
+            .agent/history/*.jsonl
+          if-no-files-found: ignore
+
+# --- Optional: auto-trigger from a labeled issue instead of/alongside the
+# manual dispatch above. Uncomment and adjust if you want "open an issue,
+# label it agent-task, agents pick it up" instead of clicking Run workflow.
+#
+#   issues:
+#     types: [labeled]
+#
+# then, in a step before "Run agents":
+#   - name: Derive task from issue
+#     if: github.event.label.name == 'agent-task'
+#     run: echo "TASK=${{ github.event.issue.title }}" >> "$GITHUB_ENV"
+# and swap --task "${{ inputs.task }}" for --task "$TASK"
