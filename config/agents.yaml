@@ -40,7 +40,7 @@ agents:
       - provider: cerebras
         base_url: https://api.cerebras.ai/v1
         api_key_env: CEREBRAS_API_KEY
-        model: llama-3.3-70b   # verify current catalog at inference-docs.cerebras.ai
+        model: gemma-4-31b   # verify current catalog at inference-docs.cerebras.ai
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
@@ -55,7 +55,7 @@ agents:
       - provider: cerebras
         base_url: https://api.cerebras.ai/v1
         api_key_env: CEREBRAS_API_KEY
-        model: llama-3.3-70b
+        model: gemma-4-31b
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
@@ -70,7 +70,7 @@ agents:
       - provider: cerebras   # fallback once the OpenRouter free route is rate-limited or pulled
         base_url: https://api.cerebras.ai/v1
         api_key_env: CEREBRAS_API_KEY
-        model: llama-3.3-70b   # matches the known-working Cerebras model used by other agents
+        model: gemma-4-31b  # matches the known-working Cerebras model used by other agents
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
@@ -108,7 +108,7 @@ agents:
       - provider: cerebras
         base_url: https://api.cerebras.ai/v1
         api_key_env: CEREBRAS_API_KEY
-        model: llama-3.3-70b
+        model: gemma-4-31b
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
