@@ -59,6 +59,10 @@ class ModelRouter:
             raise ValueError(f"No provider configured for agent '{agent_name}' in config/agents.yaml")
         last_error = None
         for provider in chain:
+            print(
+                  f"[ROUTER] Trying {agent_name} via "
+                f"{provider.name} ({provider.model})"
+                 )
             try:
                 result = provider.complete(system, user)
                 self._record(result)

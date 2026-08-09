@@ -9,7 +9,7 @@ def test_developer_cerebras_fallback_uses_supported_model():
 
     providers = config["agents"]["developer"]["providers"]
     cerebras = next(p for p in providers if p["provider"] == "cerebras")
-    assert cerebras["model"] == "llama-3.3-70b"
+    assert cerebras["model"] == "gemma-4-31b"
 
 
 def test_planner_and_tester_prefer_gemini_to_reduce_groq_bursts():
