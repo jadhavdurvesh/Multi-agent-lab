@@ -15,6 +15,7 @@ name: Run multi-agent-lab (external repo)
 #      - Permissions: Contents: Read and write, Pull requests: Read and write
 #   2. In THIS repo (the controller): Settings -> Secrets and variables ->
 #      Actions -> New repository secret -> name it TARGET_REPO_PAT
+
 on:
   workflow_dispatch:
     inputs:
@@ -23,20 +24,24 @@ on:
         required: false
         type: string
         default: "jadhavdurvesh/psychic-dollop"
+
       task:
         description: "What should the agents build/fix in that repo?"
         required: true
         type: string
+
       branch:
         description: "Branch the agents will work on (in the target repo)"
         required: false
         type: string
         default: "agent/task"
+
       test_command:
         description: "Command the Tester agent runs, in the target repo (e.g. 'npm test', 'go test ./...')"
         required: false
         type: string
         default: "pytest -q"
+
   schedule:
     - cron: "15 * * * *"
 
@@ -44,95 +49,235 @@ env:
   DEFAULT_TARGET_REPO: jadhavdurvesh/psychic-dollop
 
 permissions:
-  contents: read   # this repo (the controller) is only read from — nothing to push here
+  contents: read
 
 concurrency:
   group: multi-agent-lab-external-${{ github.event.inputs.target_repo || 'jadhavdurvesh/psychic-dollop' }}
-  cancel-in-progress: false   # never cancel a run mid-commit
+  cancel-in-progress: false
 
 jobs:
   run-agents:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+
     steps:
+
+      # ---------------------------------------------------------
+      # Checkout controller repository
+      # ---------------------------------------------------------
       - name: Checkout controller (this repo)
         uses: actions/checkout@v4
 
+      # ---------------------------------------------------------
+      # Derive task + target repo
+      # ---------------------------------------------------------
       - name: Derive task + target repo
         id: derive-task
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.TARGET_REPO_PAT }}
+
+          # IMPORTANT:
+          # Pass workflow_dispatch inputs into github-script.
+          target_repo: ${{ inputs.target_repo }}
+          task: ${{ inputs.task }}
+          branch: ${{ inputs.branch }}
+          test_command: ${{ inputs.test_command }}
+
           script: |
-            const targetRepo = core.getInput('target_repo') || process.env.DEFAULT_TARGET_REPO;
-            const branch = core.getInput('branch') || 'agent/task';
-            const testCommand = core.getInput('test_command') || 'pytest -q';
-            const [targetOwner, targetName] = targetRepo.split('/');
+            const targetRepo =
+              core.getInput('target_repo') ||
+              process.env.DEFAULT_TARGET_REPO;
+
+            const branch =
+              core.getInput('branch') ||
+              'agent/task';
+
+            const testCommand =
+              core.getInput('test_command') ||
+              'pytest -q';
+
+            const [targetOwner, targetName] =
+              targetRepo.split('/');
 
             if (!targetOwner || !targetName) {
-              core.setFailed(`Invalid target repo '${targetRepo}'. Use owner/repo format.`);
+              core.setFailed(
+                `Invalid target repo '${targetRepo}'. Use owner/repo format.`
+              );
               return;
             }
 
-            core.setOutput('target_repo', targetRepo);
-            core.setOutput('branch', branch);
-            core.setOutput('test_command', testCommand);
+            core.setOutput(
+              'target_repo',
+              targetRepo
+            );
 
+            core.setOutput(
+              'branch',
+              branch
+            );
+
+            core.setOutput(
+              'test_command',
+              testCommand
+            );
+
+            # ---------------------------------------------------
+            # Manual workflow run
+            # ---------------------------------------------------
             if (context.eventName === 'workflow_dispatch') {
-              const task = core.getInput('task').trim();
+
+              const task =
+                core.getInput('task').trim();
+
               if (!task) {
-                core.setFailed('Manual runs require a non-empty task input.');
+                core.setFailed(
+                  'Manual runs require a non-empty task input.'
+                );
                 return;
               }
-              core.setOutput('should_run', 'true');
-              core.setOutput('task', task);
-              core.setOutput('issue_number', '');
-              core.setOutput('reason', 'Manual task provided.');
+
+              core.setOutput(
+                'should_run',
+                'true'
+              );
+
+              core.setOutput(
+                'task',
+                task
+              );
+
+              core.setOutput(
+                'issue_number',
+                ''
+              );
+
+              core.setOutput(
+                'reason',
+                'Manual task provided.'
+              );
+
               return;
             }
+
+            # ---------------------------------------------------
+            # Scheduled workflow
+            # ---------------------------------------------------
 
             const queueLabel = 'agent-task';
             const runningLabel = 'agent-task-running';
 
-            const openPrs = await github.paginate(github.rest.pulls.list, {
-              owner: targetOwner,
-              repo: targetName,
-              state: 'open',
-              per_page: 100
-            });
-            const hasActiveAgentPr = openPrs.some((pr) => pr.head.ref.startsWith(`${branch}-`));
+            const openPrs =
+              await github.paginate(
+                github.rest.pulls.list,
+                {
+                  owner: targetOwner,
+                  repo: targetName,
+                  state: 'open',
+                  per_page: 100
+                }
+              );
+
+            const hasActiveAgentPr =
+              openPrs.some(
+                (pr) =>
+                  pr.head.ref.startsWith(`${branch}-`)
+              );
+
             if (hasActiveAgentPr) {
-              core.setOutput('should_run', 'false');
-              core.setOutput('task', '');
-              core.setOutput('issue_number', '');
-              core.setOutput('reason', `Skipped: open agent PR already exists for prefix ${branch}- in ${targetRepo}.`);
+
+              core.setOutput(
+                'should_run',
+                'false'
+              );
+
+              core.setOutput(
+                'task',
+                ''
+              );
+
+              core.setOutput(
+                'issue_number',
+                ''
+              );
+
+              core.setOutput(
+                'reason',
+                `Skipped: open agent PR already exists for prefix ${branch}- in ${targetRepo}.`
+              );
+
               return;
             }
 
-            const queueIssues = await github.paginate(github.rest.issues.listForRepo, {
-              owner: targetOwner,
-              repo: targetName,
-              state: 'open',
-              labels: queueLabel,
-              sort: 'created',
-              direction: 'asc',
-              per_page: 100
-            });
-            const nextIssue = queueIssues.find((issue) => !issue.pull_request);
+            const queueIssues =
+              await github.paginate(
+                github.rest.issues.listForRepo,
+                {
+                  owner: targetOwner,
+                  repo: targetName,
+                  state: 'open',
+                  labels: queueLabel,
+                  sort: 'created',
+                  direction: 'asc',
+                  per_page: 100
+                }
+              );
+
+            const nextIssue =
+              queueIssues.find(
+                (issue) => !issue.pull_request
+              );
+
             if (!nextIssue) {
-              core.setOutput('should_run', 'false');
-              core.setOutput('task', '');
-              core.setOutput('issue_number', '');
-              core.setOutput('reason', `Skipped: no open issues labeled ${queueLabel} in ${targetRepo}.`);
+
+              core.setOutput(
+                'should_run',
+                'false'
+              );
+
+              core.setOutput(
+                'task',
+                ''
+              );
+
+              core.setOutput(
+                'issue_number',
+                ''
+              );
+
+              core.setOutput(
+                'reason',
+                `Skipped: no open issues labeled ${queueLabel} in ${targetRepo}.`
+              );
+
               return;
             }
 
-            const task = (nextIssue.title || '').trim();
+            const task =
+              (nextIssue.title || '').trim();
+
             if (!task) {
-              core.setOutput('should_run', 'false');
-              core.setOutput('task', '');
-              core.setOutput('issue_number', '');
-              core.setOutput('reason', `Skipped: issue #${nextIssue.number} has an empty title.`);
+
+              core.setOutput(
+                'should_run',
+                'false'
+              );
+
+              core.setOutput(
+                'task',
+                ''
+              );
+
+              core.setOutput(
+                'issue_number',
+                ''
+              );
+
+              core.setOutput(
+                'reason',
+                `Skipped: issue #${nextIssue.number} has an empty title.`
+              );
+
               return;
             }
 
@@ -142,51 +287,91 @@ jobs:
               issue_number: nextIssue.number,
               labels: [runningLabel]
             });
+
             try {
+
               await github.rest.issues.removeLabel({
                 owner: targetOwner,
                 repo: targetName,
                 issue_number: nextIssue.number,
                 name: queueLabel
               });
+
             } catch (error) {
-              if (error.status !== 404) throw error;
+
+              if (error.status !== 404) {
+                throw error;
+              }
             }
+
             await github.rest.issues.createComment({
               owner: targetOwner,
               repo: targetName,
               issue_number: nextIssue.number,
-              body: `Picked up by scheduled workflow run #${context.runNumber} from ${context.repo.owner}/${context.repo.repo}.`
+              body:
+                `Picked up by scheduled workflow run #${context.runNumber} from ${context.repo.owner}/${context.repo.repo}.`
             });
 
-            core.setOutput('should_run', 'true');
-            core.setOutput('task', task);
-            core.setOutput('issue_number', String(nextIssue.number));
-            core.setOutput('reason', `Scheduled task picked from issue #${nextIssue.number} in ${targetRepo}.`);
+            core.setOutput(
+              'should_run',
+              'true'
+            );
 
+            core.setOutput(
+              'task',
+              task
+            );
+
+            core.setOutput(
+              'issue_number',
+              String(nextIssue.number)
+            );
+
+            core.setOutput(
+              'reason',
+              `Scheduled task picked from issue #${nextIssue.number} in ${targetRepo}.`
+            );
+
+      # ---------------------------------------------------------
+      # Explain skip reason
+      # ---------------------------------------------------------
       - name: Explain skip reason
         if: steps.derive-task.outputs.should_run != 'true'
-        run: echo "${{ steps.derive-task.outputs.reason }}"
+        run: |
+          echo "${{ steps.derive-task.outputs.reason }}"
 
+      # ---------------------------------------------------------
+      # Checkout target repository
+      # ---------------------------------------------------------
       - name: Checkout target repo
         if: steps.derive-task.outputs.should_run == 'true'
         uses: actions/checkout@v4
         with:
           repository: ${{ steps.derive-task.outputs.target_repo }}
           token: ${{ secrets.TARGET_REPO_PAT }}
-          fetch-depth: 0   # agents diff against main, so full history
+          fetch-depth: 0
           path: target-repo
 
+      # ---------------------------------------------------------
+      # Python
+      # ---------------------------------------------------------
       - name: Set up Python
         if: steps.derive-task.outputs.should_run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      # ---------------------------------------------------------
+      # Install dependencies
+      # ---------------------------------------------------------
       - name: Install dependencies
         if: steps.derive-task.outputs.should_run == 'true'
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
 
+      # ---------------------------------------------------------
+      # Git identity
+      # ---------------------------------------------------------
       - name: Configure git identity for agent commits
         if: steps.derive-task.outputs.should_run == 'true'
         working-directory: target-repo
@@ -194,6 +379,9 @@ jobs:
           git config user.name "multi-agent-lab bot"
           git config user.email "actions@users.noreply.github.com"
 
+      # ---------------------------------------------------------
+      # Run agents
+      # ---------------------------------------------------------
       - name: Run agents against target repo
         if: steps.derive-task.outputs.should_run == 'true'
         env:
@@ -201,9 +389,14 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-          GH_TOKEN: ${{ secrets.TARGET_REPO_PAT }}   # lets `gh pr create` open a PR ON THE TARGET REPO
+
+          # Allows `gh pr create` to create a PR
+          # on the target repository.
+          GH_TOKEN: ${{ secrets.TARGET_REPO_PAT }}
+
         run: |
           BRANCH="${{ steps.derive-task.outputs.branch }}-${{ github.run_number }}"
+
           python main.py \
             --repo "$GITHUB_WORKSPACE/target-repo" \
             --task "${{ steps.derive-task.outputs.task }}" \
@@ -211,44 +404,72 @@ jobs:
             --test-command "${{ steps.derive-task.outputs.test_command }}" \
             --autonomous
 
+      # ---------------------------------------------------------
+      # Mark scheduled task status
+      # ---------------------------------------------------------
       - name: Mark scheduled task status
         if: always() && github.event_name == 'schedule' && steps.derive-task.outputs.issue_number != ''
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.TARGET_REPO_PAT }}
+
           script: |
-            const targetRepo = '${{ steps.derive-task.outputs.target_repo }}';
-            const [targetOwner, targetName] = targetRepo.split('/');
-            const issueNumber = Number('${{ steps.derive-task.outputs.issue_number }}');
-            const queueLabel = 'agent-task';
-            const runningLabel = 'agent-task-running';
-            const doneLabel = 'agent-task-done';
-            const conclusion = '${{ job.status }}';
+            const targetRepo =
+              '${{ steps.derive-task.outputs.target_repo }}';
+
+            const [targetOwner, targetName] =
+              targetRepo.split('/');
+
+            const issueNumber =
+              Number(
+                '${{ steps.derive-task.outputs.issue_number }}'
+              );
+
+            const queueLabel =
+              'agent-task';
+
+            const runningLabel =
+              'agent-task-running';
+
+            const doneLabel =
+              'agent-task-done';
+
+            const conclusion =
+              '${{ job.status }}';
 
             try {
+
               await github.rest.issues.removeLabel({
                 owner: targetOwner,
                 repo: targetName,
                 issue_number: issueNumber,
                 name: runningLabel
               });
+
             } catch (error) {
-              if (error.status !== 404) throw error;
+
+              if (error.status !== 404) {
+                throw error;
+              }
             }
 
             if (conclusion === 'success') {
+
               await github.rest.issues.addLabels({
                 owner: targetOwner,
                 repo: targetName,
                 issue_number: issueNumber,
                 labels: [doneLabel]
               });
+
               await github.rest.issues.createComment({
                 owner: targetOwner,
                 repo: targetName,
                 issue_number: issueNumber,
-                body: `Completed by scheduled workflow run #${context.runNumber}.`
+                body:
+                  `Completed by scheduled workflow run #${context.runNumber}.`
               });
+
               return;
             }
 
@@ -258,13 +479,18 @@ jobs:
               issue_number: issueNumber,
               labels: [queueLabel]
             });
+
             await github.rest.issues.createComment({
               owner: targetOwner,
               repo: targetName,
               issue_number: issueNumber,
-              body: `Run #${context.runNumber} ended with status: ${conclusion}. Re-queued for retry.`
+              body:
+                `Run #${context.runNumber} ended with status: ${conclusion}. Re-queued for retry.`
             });
 
+      # ---------------------------------------------------------
+      # Upload logs
+      # ---------------------------------------------------------
       - name: Upload run logs
         if: always()
         uses: actions/upload-artifact@v4
