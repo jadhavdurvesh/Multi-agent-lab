@@ -145,6 +145,25 @@ write, repository access limited to the target repo) saved as a repository
 secret named `TARGET_REPO_PAT` — full steps are in the workflow file's header
 comment.
 
+This workflow now has:
+
+- **Manual mode** (`workflow_dispatch`) with `target_repo` defaulting to
+  `jadhavdurvesh/psychic-dollop`.
+- **Hourly mode** (`schedule` at `15 * * * *`) that also targets
+  `jadhavdurvesh/psychic-dollop` by default.
+
+For scheduled runs in the target repo:
+
+1. The workflow checks for open issues labeled `agent-task` (oldest first).
+2. It skips cleanly if none exist.
+3. It skips cleanly if an open PR already exists on an `agent/task-*` branch.
+4. It moves the selected issue to `agent-task-running` and uses the issue title
+   as the task.
+5. On success it adds `agent-task-done`; on failure it re-adds `agent-task`.
+
+So to drive automatic hourly work, create issues in
+`jadhavdurvesh/psychic-dollop` with the `agent-task` label.
+
 ### Secrets either workflow needs
 
 Add whichever of these you actually have keys for under **Settings → Secrets
