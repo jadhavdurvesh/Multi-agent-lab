@@ -48,14 +48,18 @@ agents:
 
   planner:
     providers:
-      - provider: groq
-        base_url: https://api.groq.com/openai/v1
-        api_key_env: GROQ_API_KEY
-        model: llama-3.3-70b-versatile
+      - provider: gemini
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY
+        model: gemini-2.5-flash
       - provider: cerebras
         base_url: https://api.cerebras.ai/v1
         api_key_env: CEREBRAS_API_KEY
         model: llama-3.3-70b
+      - provider: groq
+        base_url: https://api.groq.com/openai/v1
+        api_key_env: GROQ_API_KEY
+        model: llama-3.3-70b-versatile
 
   developer:
     providers:
@@ -67,6 +71,10 @@ agents:
         base_url: https://api.cerebras.ai/v1
         api_key_env: CEREBRAS_API_KEY
         model: llama-3.3-70b   # matches the known-working Cerebras model used by other agents
+      - provider: gemini
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY
+        model: gemini-2.5-flash
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
@@ -74,14 +82,18 @@ agents:
 
   tester:
     providers:
-      - provider: groq
-        base_url: https://api.groq.com/openai/v1
-        api_key_env: GROQ_API_KEY
-        model: llama-3.1-8b-instant   # tester doesn't need a strong model, just fast — this one has the highest free daily quota on Groq
+      - provider: gemini
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY
+        model: gemini-2.5-flash
       - provider: cerebras
         base_url: https://api.cerebras.ai/v1
         api_key_env: CEREBRAS_API_KEY
         model: llama3.1-8b
+      - provider: groq
+        base_url: https://api.groq.com/openai/v1
+        api_key_env: GROQ_API_KEY
+        model: llama-3.1-8b-instant
 
   reviewer:
     providers:
