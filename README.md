@@ -73,12 +73,62 @@ Python — the Tester agent just runs whatever string you give it.
 
 ## GitHub Actions
 
-Two workflows ship in `.github/workflows/`:
+Two workflows in `.github/workflows/` let you trigger a run from the browser
+instead of a terminal — useful from a phone, or for kicking off a run without
+having your provider keys sitting on a local machine.
 
-- **`agent-run.yml`** — runs the agents against this repo itself (self-improvement). Trigger from the Actions tab, type a task, it commits/pushes/PRs here.
-- **`agent-run-external.yml`** — keeps this repo as the "controller" and points the agents at a *different* repo (your actual product). That repo gets the branch, commits, and PR. Requires a `TARGET_REPO_PAT` secret (a token scoped to the target repo, since the default `GITHUB_TOKEN` can only act on the repo the workflow lives in) — setup instructions are in the workflow file's header comment.
+### How a run actually works, step by step
 
-Either way, add `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `GEMINI_API_KEY` / `CEREBRAS_API_KEY` as repository secrets first (Settings → Secrets and variables → Actions) — only add the ones you actually have keys for, a missing one just gets skipped in the fallback chain. Never commit real keys — `.env` is gitignored for local runs.
+1. You go to the **Actions** tab → pick a workflow → **Run workflow** → fill
+   in the form (task, branch prefix, test command) → **Run workflow** button.
+2. GitHub spins up a fresh Ubuntu runner and checks out the code (both this
+   repo and, for the external variant, the target repo too).
+3. It installs `requirements.txt`, then runs
+   `python main.py --task "<what you typed>" --autonomous` against whichever
+   repo is in play. `--autonomous` is hardcoded in both workflows — a
+   workflow run can't stop and wait for an `input()` prompt the way a
+   terminal run can, so there's no safe-mode pause here. Read that as: only
+   dispatch a run with a task you're comfortable with the agents attempting
+   unsupervised.
+4. The agents do their normal thing — Architect reads the repo, Planner
+   breaks the task into subtasks, Developer/Tester/Reviewer iterate per
+   subtask — each step logged to `.agent/history/*.jsonl` and `usage.json`
+   as it goes, same as a local run.
+5. On success, a branch named `<branch input>-<run number>` (e.g.
+   `agent/task-7`) gets pushed, and a PR opens automatically via `gh pr
+   create` if a token with `pull-requests: write` is available in that job.
+6. Either way — pass or fail — the **"Upload run logs"** step attaches
+   `usage.json` and `.agent/history/*.jsonl` as a downloadable artifact on
+   the run page, so you can see exactly what each agent did and which
+   provider/model handled which call, even on a failed run.
+
+### `agent-run.yml` — points the agents at this repo
+
+Self-contained: checks out this repo, agents work on it, PR opens here.
+Needs `contents: write` + `pull-requests: write`, which the built-in
+`GITHUB_TOKEN` already has for its own repo — no extra secret to set up.
+
+### `agent-run-external.yml` — points the agents at a *different* repo
+
+This repo stays the "controller" (supplies the code that runs) while a
+separate repo — the one named in the `target_repo` input, `owner/repo` — is
+what actually gets read, edited, committed, and PR'd. That needs a
+`TARGET_REPO_PAT` secret: the default `GITHUB_TOKEN` can only act on the repo
+the workflow lives in, so reaching a different repo requires a real token
+scoped to it. Setup is a fine-grained PAT (Contents + Pull requests: Read and
+write, repository access limited to the target repo) saved as a repository
+secret named `TARGET_REPO_PAT` — full steps are in the workflow file's header
+comment.
+
+### Secrets either workflow needs
+
+Add whichever of these you actually have keys for under **Settings → Secrets
+and variables → Actions**: `OPENROUTER_API_KEY`, `GROQ_API_KEY`,
+`GEMINI_API_KEY`, `CEREBRAS_API_KEY`. A missing one isn't an error — that
+provider just gets skipped in the fallback chain (see `config/agents.yaml`).
+Never commit real keys; `.env` is gitignored for local runs, and these
+workflows only ever read keys from Actions secrets, never from a file in the
+repo.
 
 ## Safety note
 
