@@ -64,6 +64,7 @@ class ModelRouter:
                 self._record(result)
                 return result
             except Exception as e:  # noqa: BLE001 - quota/rate-limit/network errors all fall through to the next provider
+                print(f"[ROUTER] {agent_name} via {provider.name} ({provider.model}) failed: {e}")
                 last_error = e
                 continue
         raise RuntimeError(f"All providers exhausted for agent '{agent_name}': {last_error}")
