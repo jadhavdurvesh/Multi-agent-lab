@@ -71,6 +71,15 @@ Python — the Tester agent just runs whatever string you give it.
   returns something that doesn't parse — it won't crash the run, but it also
   won't write good code for you if the underlying model can't.
 
+## GitHub Actions
+
+Two workflows ship in `.github/workflows/`:
+
+- **`agent-run.yml`** — runs the agents against this repo itself (self-improvement). Trigger from the Actions tab, type a task, it commits/pushes/PRs here.
+- **`agent-run-external.yml`** — keeps this repo as the "controller" and points the agents at a *different* repo (your actual product). That repo gets the branch, commits, and PR. Requires a `TARGET_REPO_PAT` secret (a token scoped to the target repo, since the default `GITHUB_TOKEN` can only act on the repo the workflow lives in) — setup instructions are in the workflow file's header comment.
+
+Either way, add `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `GEMINI_API_KEY` as repository secrets first (Settings → Secrets and variables → Actions). Never commit real keys — `.env` is gitignored for local runs.
+
 ## Safety note
 
 The Developer and Tester agents run real shell commands and rewrite real
