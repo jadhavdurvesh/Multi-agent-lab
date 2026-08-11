@@ -1,3 +1,7 @@
+# =============================================================================
+# Multi-Agent Lab — Provider / Model Configuration
+# =============================================================================
+#
 # Maps each agent role to one or more providers, tried in order (fallback
 # chain). Any provider exposing an OpenAI-compatible /chat/completions
 # endpoint works here — OpenRouter, Groq, Cerebras, Gemini, Together, a
@@ -25,8 +29,16 @@
 # fails with 402 Payment Required on an unfunded account. Add it back the
 # same way as the others (provider/base_url/api_key_env/model block) if you
 # ever add billing there.
+#
+# NOTE (2026-08-11): Updated developer chain — removed OpenRouter
+# qwen/qwen3-coder:free (404 — model pulled from free roster).
+# Developer now prioritises Gemini → Groq → Cerebras.
+# =============================================================================
 
 agents:
+  # ---------------------------------------------------------------------------
+  # ARCHITECT — analyses the target repo and decides *what* needs to change
+  # ---------------------------------------------------------------------------
   architect:
     providers:
       - provider: openrouter
@@ -46,6 +58,9 @@ agents:
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
 
+  # ---------------------------------------------------------------------------
+  # PLANNER — breaks the architecture plan into ordered subtasks
+  # ---------------------------------------------------------------------------
   planner:
     providers:
       - provider: gemini
@@ -61,16 +76,15 @@ agents:
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
 
+  # ---------------------------------------------------------------------------
+  # DEVELOPER — writes the actual code for each subtask
+  # ---------------------------------------------------------------------------
   developer:
     providers:
-      - provider: openrouter
-        base_url: https://openrouter.ai/api/v1
-        api_key_env: OPENROUTER_API_KEY
-        model: qwen/qwen3-coder:free   # verify slug at openrouter.ai/models — coder-tuned free models rotate often
-      - provider: cerebras   # fallback once the OpenRouter free route is rate-limited or pulled
-        base_url: https://api.cerebras.ai/v1
-        api_key_env: CEREBRAS_API_KEY
-        model: gemma-4-31b  # matches the known-working Cerebras model used by other agents
+      # NOTE: OpenRouter qwen/qwen3-coder:free was here originally but it's
+      # been pulled from the free roster (404 as of 2026-08-11). Replaced
+      # with Gemini as the primary coding model. If a new free coder model
+      # appears on OpenRouter, add it back above this block.
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
@@ -79,7 +93,14 @@ agents:
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
+      - provider: cerebras   # fallback once Gemini/Groq are rate-limited
+        base_url: https://api.cerebras.ai/v1
+        api_key_env: CEREBRAS_API_KEY
+        model: gemma-4-31b  # matches the known-working Cerebras model used by other agents
 
+  # ---------------------------------------------------------------------------
+  # TESTER — runs the test suite and reports failures back to the developer
+  # ---------------------------------------------------------------------------
   tester:
     providers:
       - provider: gemini
@@ -95,6 +116,9 @@ agents:
         api_key_env: GROQ_API_KEY
         model: llama-3.1-8b-instant
 
+  # ---------------------------------------------------------------------------
+  # REVIEWER — reviews the final diff for correctness, style, and security
+  # ---------------------------------------------------------------------------
   reviewer:
     providers:
       - provider: openrouter
