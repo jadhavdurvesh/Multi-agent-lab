@@ -1,0 +1,101 @@
+name: Seed task queue from TASKS.md
+
+# Reads TASKS.md and creates a GitHub Issue labeled 'agent-task' for every
+# task line that doesn't already have a matching open issue.
+# Runs on every push to main (so new tasks appear within minutes of editing
+# TASKS.md) and daily at midnight UTC as a safety net.
+
+on:
+  push:
+    branches: [main]
+    paths: [TASKS.md]
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Seed issues from TASKS.md
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const content = fs.readFileSync('TASKS.md', 'utf8');
+
+            // Extract every line starting with "- " (task items)
+            const tasks = content
+              .split('\n')
+              .map(l => l.trim())
+              .filter(l => l.startsWith('- '))
+              .map(l => l.slice(2).trim())
+              .filter(Boolean);
+
+            if (tasks.length === 0) {
+              console.log('No tasks found in TASKS.md.');
+              return;
+            }
+
+            // Fetch all open agent-task issues once
+            const openIssues = await github.paginate(
+              github.rest.issues.listForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                labels: 'agent-task',
+                per_page: 100,
+              }
+            );
+            const existingTitles = new Set(openIssues.map(i => i.title.trim()));
+
+            // Ensure required labels exist
+            const requiredLabels = [
+              { name: 'agent-task',         color: '0075ca', description: 'Queued for the agent to work on' },
+              { name: 'agent-task-running', color: 'e4e669', description: 'Agent is currently working on this' },
+              { name: 'agent-task-done',    color: '0e8a16', description: 'Agent completed this task' },
+            ];
+            const existingLabels = await github.paginate(
+              github.rest.issues.listLabelsForRepo,
+              { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 }
+            );
+            const existingLabelNames = new Set(existingLabels.map(l => l.name));
+
+            for (const label of requiredLabels) {
+              if (!existingLabelNames.has(label.name)) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ...label,
+                });
+                console.log(`Created label: ${label.name}`);
+              }
+            }
+
+            // Create an issue for each task not already queued
+            let created = 0;
+            for (const task of tasks) {
+              if (existingTitles.has(task)) {
+                console.log(`Already queued: ${task}`);
+                continue;
+              }
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: task,
+                labels: ['agent-task'],
+                body: `Auto-created from TASKS.md by the seed-tasks workflow.\n\nThe agent will pick this up on its next scheduled run.`,
+              });
+              console.log(`Created issue: ${task}`);
+              created++;
+            }
+            console.log(`Done. Created ${created} new issue(s).`);
