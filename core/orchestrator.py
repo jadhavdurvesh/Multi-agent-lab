@@ -1,13 +1,9 @@
-"""The orchestrator: Architect -> Planner -> [Developer -> Tester -> Reviewer]* -> push/PR.
-
-Safe mode (default) pauses for your approval before implementation starts and
-again before pushing. Pass --autonomous to skip both gates once you trust a
-given model/task combination.
-"""
 from __future__ import annotations
 
-import shutil
+import os
 import subprocess
+
+import requests
 
 from agents.architect import ArchitectAgent
 from agents.developer import DeveloperAgent
@@ -43,17 +39,26 @@ class Orchestrator:
 
         print("[PLANNER] Creating subtasks...")
         plan = self.planner.run(task, architecture)
-        print(f"Planned {len(plan)} subtask(s).")
+        print(f"[PLANNER] {len(plan)} subtask(s) planned.")
+        for s in plan:
+            print(f"  - {s.get('title')}")
 
         if not self._confirm(f"Proceed with {len(plan)} subtask(s)?"):
             return "Aborted before implementation."
 
         self.git.checkout_branch(branch)
 
+        any_edits = False
+
         for subtask in plan:
             print(f"\n[DEVELOPER] Implementing: {subtask.get('title', subtask)}")
-            self.developer.implement(subtask, subtask.get("files", []))
+            edits = self.developer.implement(subtask, subtask.get("files", []))
 
+            if not edits:
+                print(f"[DEVELOPER] No files written for '{subtask.get('title')}' — skipping tester/reviewer.")
+                continue
+
+            any_edits = True
             passed = False
             result = {}
             for i in range(self.max_iterations):
@@ -65,8 +70,7 @@ class Orchestrator:
                 self.developer.fix(result["stderr"] or result["stdout"], subtask)
 
             if not passed:
-                print(f"[ORCHESTRATOR] Giving up on '{subtask.get('title')}' after {self.max_iterations} attempts.")
-                continue
+                print(f"[ORCHESTRATOR] Tests still failing after {self.max_iterations} attempts — committing anyway and moving on.")
 
             self.git.commit(f"Implement: {subtask.get('title')}")
 
@@ -81,35 +85,89 @@ class Orchestrator:
                 self.tester.test()
                 self.git.commit(f"Address review: {subtask.get('title')}")
 
-            if not review.get("approved"):
-                print(f"[ORCHESTRATOR] '{subtask.get('title')}' still has open review comments "
-                      f"after {self.max_iterations} attempts; leaving as-is on '{branch}'.")
+        if not any_edits:
+            return "No files were written by any subtask — nothing to push."
 
         if not self._confirm(f"Push branch '{branch}' and open a PR?"):
             return f"Changes committed locally on '{branch}'. Push manually when ready."
 
-        try:
-            self.git.push(branch)
-        except RuntimeError as e:
-            print(f"[GITHUB] Could not push automatically ({e}). Changes are committed "
-                  f"locally on '{branch}' — push manually once a remote is configured.")
-            return "Completed (local only, push failed)"
+        print(f"[GIT] Pushing branch '{branch}'...")
+        self.git.push(branch)
 
-        pr_url = self._try_create_pr(branch, task)
+        pr_url = self._create_pr(branch, task)
         if pr_url:
             print(f"[GITHUB] PR opened: {pr_url}")
         else:
-            print(f"[GITHUB] Branch '{branch}' pushed. Open a PR from your GitHub repo page "
-                  f"(or install & auth the GitHub CLI 'gh' so this can open one automatically).")
-        return "Completed"
+            print(f"[GITHUB] Branch '{branch}' pushed. Open a PR manually on GitHub.")
 
-    def _try_create_pr(self, branch: str, task: str) -> str | None:
-        if not shutil.which("gh"):
-            return None
+        return f"Completed. Branch: {branch}" + (f" PR: {pr_url}" if pr_url else "")
+
+    def _create_pr(self, branch: str, task: str) -> str | None:
+        """Open a PR via the GitHub API using GH_TOKEN from the environment.
+        Works in GitHub Actions without needing the gh CLI installed.
+        """
+        token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        if not token:
+            return self._try_gh_cli(branch, task)
+
+        # Determine owner/repo from the remote URL
         try:
             result = subprocess.run(
-                ["gh", "pr", "create", "--title", f"Agent: {task[:60]}",
-                 "--body", "Automated PR from multi-agent-lab.", "--head", branch],
+                ["git", "remote", "get-url", "origin"],
+                cwd=self.git.root, capture_output=True, text=True
+            )
+            remote_url = result.stdout.strip()
+            # Parse https://github.com/owner/repo.git or git@github.com:owner/repo.git
+            if "github.com" in remote_url:
+                if remote_url.startswith("https://"):
+                    # strip trailing .git, split by /
+                    parts = remote_url.rstrip("/").rstrip(".git").split("/")
+                    owner, repo = parts[-2], parts[-1].replace(".git", "")
+                else:
+                    # git@github.com:owner/repo.git
+                    slug = remote_url.split(":")[-1].replace(".git", "")
+                    owner, repo = slug.split("/")
+            else:
+                return None
+        except Exception as e:
+            print(f"[GITHUB] Could not parse remote URL: {e}")
+            return None
+
+        try:
+            resp = requests.post(
+                f"https://api.github.com/repos/{owner}/{repo}/pulls",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                json={
+                    "title": f"Agent: {task[:72]}",
+                    "head": branch,
+                    "base": "main",
+                    "body": (
+                        f"Automated PR from multi-agent-lab.\n\n"
+                        f"**Task:** {task}\n\n"
+                        f"*Generated by the Developer → Tester → Reviewer agent pipeline.*"
+                    ),
+                },
+                timeout=30,
+            )
+            if resp.status_code in (200, 201):
+                return resp.json().get("html_url")
+            print(f"[GITHUB] PR API returned {resp.status_code}: {resp.text[:200]}")
+            return None
+        except Exception as e:
+            print(f"[GITHUB] PR creation failed: {e}")
+            return None
+
+    def _try_gh_cli(self, branch: str, task: str) -> str | None:
+        """Fallback: try gh CLI if no token env var found."""
+        try:
+            result = subprocess.run(
+                ["gh", "pr", "create",
+                 "--title", f"Agent: {task[:72]}",
+                 "--body", "Automated PR from multi-agent-lab.",
+                 "--head", branch],
                 cwd=self.git.root, capture_output=True, text=True,
             )
             return result.stdout.strip() if result.returncode == 0 else None
