@@ -1,13 +1,23 @@
-"""The orchestrator: Architect -> Planner -> [Developer -> Tester -> Reviewer]* -> push/PR.
+"""Orchestrator — the proper multi-agent loop.
 
-Safe mode (default) pauses for your approval before implementation starts and
-again before pushing. Pass --autonomous to skip both gates once you trust a
-given model/task combination.
+Each agent has a genuinely different job:
+
+  Architect  →  reads the repo, identifies what's relevant
+  Planner    →  thinks deeply about HOW to implement the task (blueprint)
+  Developer  →  writes the actual code following the blueprint
+  Tester     →  runs the suite; if green, writes new tests for the feature
+  Reviewer   →  real code review: correctness, security, style
+
+One task per run. One PR per run. The blueprint is what makes this more
+than "just call the model twice" — the Developer gets a detailed spec,
+not a vague task string.
 """
 from __future__ import annotations
 
-import shutil
+import os
 import subprocess
+
+import requests
 
 from agents.architect import ArchitectAgent
 from agents.developer import DeveloperAgent
@@ -37,81 +47,153 @@ class Orchestrator:
         return answer.strip().lower() == "y"
 
     def run(self, task: str, branch: str = "agent/task-1") -> str:
-        print(f"[ARCHITECT] Analyzing repository for: {task}")
+
+        # ── Step 1: Architect ──────────────────────────────────────────────
+        print(f"\n[ARCHITECT] Reading repo for: {task}")
         architecture = self.architect.run(task)
-        print(architecture[:500])
+        print(architecture[:400])
 
-        print("[PLANNER] Creating subtasks...")
-        plan = self.planner.run(task, architecture)
-        print(f"Planned {len(plan)} subtask(s).")
+        # ── Step 2: Planner ────────────────────────────────────────────────
+        # Produces a detailed implementation blueprint — HOW to implement
+        # the task, which files to touch, what edge cases to handle.
+        # The Developer follows this blueprint rather than working from
+        # a vague task string.
+        print(f"\n[PLANNER] Creating implementation blueprint...")
+        blueprint = self.planner.run(task, architecture)
+        print(blueprint[:400])
 
-        if not self._confirm(f"Proceed with {len(plan)} subtask(s)?"):
-            return "Aborted before implementation."
+        if not self._confirm("Proceed with implementation?"):
+            return "Aborted."
 
         self.git.checkout_branch(branch)
 
-        for subtask in plan:
-            print(f"\n[DEVELOPER] Implementing: {subtask.get('title', subtask)}")
-            self.developer.implement(subtask, subtask.get("files", []))
+        # ── Step 3: Developer ──────────────────────────────────────────────
+        # Gets both the task AND the blueprint as context.
+        context_files = PlannerAgent.extract_file_paths(blueprint)
+        print(f"\n[DEVELOPER] Implementing (context: {context_files or 'no existing files'})...")
 
-            passed = False
-            result = {}
-            for i in range(self.max_iterations):
-                result = self.tester.test()
-                print(f"[TESTER] {'PASS' if result['passed'] else 'FAIL'} (attempt {i + 1})")
-                if result["passed"]:
-                    passed = True
-                    break
-                self.developer.fix(result["stderr"] or result["stdout"], subtask)
+        subtask = {
+            "title": task,
+            "description": (
+                f"Task: {task}\n\n"
+                f"Implementation blueprint:\n{blueprint}"
+            ),
+            "files": context_files,
+        }
+        edits = self.developer.implement(subtask, context_files)
 
-            if not passed:
-                print(f"[ORCHESTRATOR] Giving up on '{subtask.get('title')}' after {self.max_iterations} attempts.")
-                continue
+        if not edits:
+            return "Developer produced no file edits — check the run log for the raw model response."
 
-            self.git.commit(f"Implement: {subtask.get('title')}")
+        # ── Step 4: Tester — run suite, fix, retry ─────────────────────────
+        passed = False
+        for i in range(self.max_iterations):
+            result = self.tester.test()
+            status = "PASS" if result["passed"] else "FAIL"
+            print(f"[TESTER] {status} (attempt {i + 1}/{self.max_iterations})")
+            if result["passed"]:
+                passed = True
+                break
+            print(f"[DEVELOPER] Fixing test failures...")
+            self.developer.fix(result["stderr"] or result["stdout"], subtask)
 
-            review = {"approved": False}
-            for i in range(self.max_iterations):
-                review = self.reviewer.review()
-                print(f"[REVIEWER] {'APPROVED' if review['approved'] else 'CHANGES REQUESTED'}")
-                if review["approved"]:
-                    break
-                feedback = "\n".join(review.get("comments", []))
-                self.developer.fix(feedback, subtask)
-                self.tester.test()
-                self.git.commit(f"Address review: {subtask.get('title')}")
-
-            if not review.get("approved"):
-                print(f"[ORCHESTRATOR] '{subtask.get('title')}' still has open review comments "
-                      f"after {self.max_iterations} attempts; leaving as-is on '{branch}'.")
-
-        if not self._confirm(f"Push branch '{branch}' and open a PR?"):
-            return f"Changes committed locally on '{branch}'. Push manually when ready."
-
-        try:
-            self.git.push(branch)
-        except RuntimeError as e:
-            print(f"[GITHUB] Could not push automatically ({e}). Changes are committed "
-                  f"locally on '{branch}' — push manually once a remote is configured.")
-            return "Completed (local only, push failed)"
-
-        pr_url = self._try_create_pr(branch, task)
-        if pr_url:
-            print(f"[GITHUB] PR opened: {pr_url}")
+        if passed:
+            # Suite is green — ask the Tester to write tests for the new feature
+            test_files = [f for f in context_files if "test" in f] or ["tests/test_app.py"]
+            print(f"\n[TESTER] Writing new tests for the implemented feature...")
+            new_tests = self.tester.write_tests(blueprint, test_files)
+            if new_tests:
+                # Run once more to make sure new tests pass too
+                final = self.tester.test()
+                if not final["passed"]:
+                    print(f"[DEVELOPER] New tests failing — fixing...")
+                    self.developer.fix(final["stderr"] or final["stdout"], subtask)
+                    self.tester.test()
         else:
-            print(f"[GITHUB] Branch '{branch}' pushed. Open a PR from your GitHub repo page "
-                  f"(or install & auth the GitHub CLI 'gh' so this can open one automatically).")
-        return "Completed"
+            print("[ORCHESTRATOR] Tests still failing after retries — committing for review.")
 
-    def _try_create_pr(self, branch: str, task: str) -> str | None:
-        if not shutil.which("gh"):
-            return None
+        self.git.commit(f"Agent: {task[:72]}")
+
+        # ── Step 5: Reviewer ───────────────────────────────────────────────
+        for i in range(self.max_iterations):
+            review = self.reviewer.review()
+            approved = review.get("approved", False)
+            print(f"[REVIEWER] {'APPROVED' if approved else 'CHANGES REQUESTED'} "
+                  f"(attempt {i + 1}/{self.max_iterations})")
+            if approved:
+                break
+            feedback = "\n".join(review.get("comments", []))
+            print(f"[DEVELOPER] Addressing review comments...")
+            self.developer.fix(feedback, subtask)
+            self.tester.test()
+            self.git.commit(f"Agent review fix: {task[:60]}")
+
+        if not self._confirm(f"Push '{branch}' and open PR?"):
+            return f"Committed locally on '{branch}'."
+
+        # ── Step 6: Push + PR ──────────────────────────────────────────────
+        print(f"\n[GIT] Pushing '{branch}'...")
+        self.git.push(branch)
+
+        pr_url = self._create_pr(branch, task)
+        if pr_url:
+            print(f"[GITHUB] PR: {pr_url}")
+        else:
+            print(f"[GITHUB] Branch pushed. Open a PR manually on GitHub.")
+
+        return f"Done. Branch: {branch}" + (f" | PR: {pr_url}" if pr_url else "")
+
+    def _create_pr(self, branch: str, task: str) -> str | None:
+        token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        if not token:
+            return self._try_gh_cli(branch, task)
         try:
             result = subprocess.run(
-                ["gh", "pr", "create", "--title", f"Agent: {task[:60]}",
+                ["git", "remote", "get-url", "origin"],
+                cwd=self.git.root, capture_output=True, text=True
+            )
+            remote_url = result.stdout.strip()
+            if "github.com" not in remote_url:
+                return None
+            if remote_url.startswith("https://"):
+                parts = remote_url.rstrip("/").split("/")
+                owner, repo = parts[-2], parts[-1].replace(".git", "")
+            else:
+                slug = remote_url.split(":")[-1].replace(".git", "")
+                owner, repo = slug.split("/")
+        except Exception as e:
+            print(f"[GITHUB] Could not parse remote URL: {e}")
+            return None
+        try:
+            resp = requests.post(
+                f"https://api.github.com/repos/{owner}/{repo}/pulls",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+                json={
+                    "title": f"Agent: {task[:72]}",
+                    "head": branch,
+                    "base": "main",
+                    "body": (
+                        f"Automated PR from multi-agent-lab.\n\n"
+                        f"**Task:** {task}\n\n"
+                        f"*Architect → Planner → Developer → Tester → Reviewer pipeline.*"
+                    ),
+                },
+                timeout=30,
+            )
+            if resp.status_code in (200, 201):
+                return resp.json().get("html_url")
+            print(f"[GITHUB] PR API {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            print(f"[GITHUB] PR creation error: {e}")
+        return None
+
+    def _try_gh_cli(self, branch: str, task: str) -> str | None:
+        try:
+            r = subprocess.run(
+                ["gh", "pr", "create", "--title", f"Agent: {task[:72]}",
                  "--body", "Automated PR from multi-agent-lab.", "--head", branch],
                 cwd=self.git.root, capture_output=True, text=True,
             )
-            return result.stdout.strip() if result.returncode == 0 else None
+            return r.stdout.strip() if r.returncode == 0 else None
         except OSError:
             return None
