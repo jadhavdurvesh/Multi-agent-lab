@@ -28,6 +28,7 @@ def main() -> None:
     parser.add_argument("--autonomous", action="store_true", help="Skip approval gates (default: safe mode)")
     parser.add_argument("--dry-run", action="store_true", help="Use a mock provider instead of real API calls")
     parser.add_argument("--test-command", default="pytest -q", help="Command the Tester agent runs, e.g. 'npm test'")
+    parser.add_argument("--tdd", action="store_true", help="TDD mode: Tester writes failing tests before Developer implements")
     args = parser.parse_args()
 
     fs = FileSystemTools(args.repo)
@@ -40,6 +41,7 @@ def main() -> None:
         router, tasks, fs, terminal, git,
         safe_mode=not args.autonomous,
         test_command=args.test_command,
+        tdd_mode=args.tdd,
     )
     result = orchestrator.run(args.task, branch=args.branch)
     print(f"\n[DONE] {result}")
