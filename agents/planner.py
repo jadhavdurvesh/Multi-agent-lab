@@ -1,68 +1,78 @@
 from __future__ import annotations
 
 import json
-import re
 
 from .base import BaseAgent
 
-SYSTEM = """You are the Planner agent. Given a task and an architecture analysis,
-break the work into a numbered list of concrete, independently testable subtasks.
-Respond ONLY as a raw JSON array of objects — no markdown fences, no prose.
+SYSTEM = """You are the Planner agent in a multi-agent coding system.
 
-Each object must have:
-  "id"          integer
-  "title"       short name for the subtask
-  "description" what to implement, in detail
-  "files"       list of file paths the developer should read or create
+Your job is NOT to split the task into many subtasks — the task is already
+a single focused unit. Your job is to produce a TECHNICAL SPEC that the
+Developer, Tester, and Reviewer agents will all work from.
 
-Example:
-[
-  {"id": 1, "title": "Add greet function", "description": "Add a greet(name) function to app.py that returns Hello, name!", "files": ["app.py"]},
-  {"id": 2, "title": "Add test", "description": "Add test_greet() to tests/test_app.py", "files": ["tests/test_app.py"]}
-]"""
+Given a task description and an architecture analysis, output ONLY a JSON
+object with this exact shape:
+
+{
+  "title": "short title for the task",
+  "approach": "2-4 sentences describing the implementation approach — what pattern to follow, what to avoid, key decisions",
+  "files_to_modify": ["list", "of", "existing", "file", "paths", "to", "change"],
+  "files_to_create": ["list", "of", "new", "file", "paths", "to", "create"],
+  "tests_to_write": ["describe test 1", "describe test 2"],
+  "edge_cases": ["edge case or error condition to handle 1", "edge case 2"],
+  "dependencies": ["any new pip package needed — empty list if none"]
+}
+
+Rules:
+- Output ONLY the JSON object. No prose, no markdown fences, no backticks.
+- Be concrete and specific — file paths should be real paths from the repo.
+- tests_to_write should describe what the tests actually check, not just "write tests".
+- If a file does not exist yet, put it in files_to_create, not files_to_modify.
+"""
 
 
 class PlannerAgent(BaseAgent):
     name = "planner"
 
-    def run(self, task: str, architecture: str) -> list[dict]:
-        user = f"Task:\n{task}\n\nArchitecture:\n{architecture}"
+    def run(self, task: str, architecture: str) -> dict:
+        """Returns a technical spec dict that flows through the whole agent chain."""
+        user = f"Task:\n{task}\n\nArchitecture analysis:\n{architecture}"
         raw = self.ask(SYSTEM, user)
-        plan = self._parse_plan(raw, task)
-        self.tasks.save_tasks(plan)
-        return plan
+        spec = self._parse_spec(raw)
+        # Save to task manager so other agents can reference it
+        self.tasks.save_tasks([spec])
+        return spec
 
     @staticmethod
-    def _parse_plan(raw: str, task: str) -> list[dict]:
-        """Parse a JSON plan from model output, same multi-strategy approach
-        as DeveloperAgent._parse_edits so fence-wrapping doesn't kill the run.
-        """
+    def _parse_spec(raw: str) -> dict:
+        import re
         text = raw.strip()
-
-        # Strip markdown fences
-        fence_match = re.search(r"^```(?:json)?\s*\n?(.*?)\n?```\s*$", text, re.DOTALL)
-        if fence_match:
-            text = fence_match.group(1).strip()
-
-        # Direct parse
+        # Strip markdown fences if present
+        fence = re.search(r"^```(?:json)?\s*\n?(.*?)\n?```\s*$", text, re.DOTALL)
+        if fence:
+            text = fence.group(1).strip()
         try:
             result = json.loads(text)
-            if isinstance(result, list) and result:
+            if isinstance(result, dict) and "approach" in result:
                 return result
         except json.JSONDecodeError:
             pass
-
-        # Extract first [...] from anywhere in the response
-        start = text.find("[")
-        end = text.rfind("]")
+        # Try extracting {} from anywhere in response
+        start, end = text.find("{"), text.rfind("}")
         if start != -1 and end > start:
             try:
                 result = json.loads(text[start:end + 1])
-                if isinstance(result, list) and result:
+                if isinstance(result, dict):
                     return result
             except json.JSONDecodeError:
                 pass
-
-        # Fallback: one subtask from the whole task string
-        print(f"[PLANNER] Warning: could not parse plan JSON. Raw starts with: {raw[:120]!r}")
-        return [{"id": 1, "title": task, "description": task, "files": []}]
+        # Fallback: return a minimal spec so the run doesn't crash
+        return {
+            "title": raw[:80],
+            "approach": raw[:300],
+            "files_to_modify": [],
+            "files_to_create": [],
+            "tests_to_write": [],
+            "edge_cases": [],
+            "dependencies": [],
+        }
