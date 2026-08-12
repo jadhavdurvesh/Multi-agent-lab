@@ -37,6 +37,12 @@ on:
         type: string
         default: "pytest -q"
 
+      auto_merge:
+        description: "Auto-merge the PR if CI checks pass (true/false)"
+        required: false
+        type: boolean
+        default: false
+
   schedule:
     - cron: "*/20 * * * *"
 
@@ -454,6 +460,21 @@ jobs:
 
 
       # ======================================================
+      # NOTIFY: START
+      # ======================================================
+
+      - name: Notify start
+        if: steps.derive-task.outputs.should_run == 'true'
+        run: |
+          python scripts/notify.py start \
+            "${{ steps.derive-task.outputs.task }}" \
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+
+      # ======================================================
       # CHECKOUT TARGET REPOSITORY
       # ======================================================
 
@@ -698,6 +719,83 @@ jobs:
                 `Run #${context.runNumber} ended with status: ${conclusion}. Re-queued for retry.`
 
             });
+
+
+      # ======================================================
+      # AUTO-MERGE PR IF CI PASSES
+      # ======================================================
+
+      - name: Auto-merge PR if CI passes
+        if: >
+          steps.derive-task.outputs.should_run == 'true' &&
+          inputs.auto_merge == 'true' &&
+          job.status == 'success'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.TARGET_REPO_PAT }}
+          script: |
+            const targetRepo = '${{ steps.derive-task.outputs.target_repo }}';
+            const [owner, repo] = targetRepo.split('/');
+            const branch = '${{ steps.derive-task.outputs.branch }}-${{ github.run_number }}';
+
+            const { data: prs } = await github.rest.pulls.list({
+              owner, repo, state: 'open', per_page: 50
+            });
+            const pr = prs.find(p => p.head.ref === branch);
+            if (!pr) { console.log('No open PR found for', branch); return; }
+
+            // Poll CI checks for up to 10 minutes
+            let merged = false;
+            for (let i = 0; i < 20; i++) {
+              const { data: checks } = await github.rest.checks.listForRef({
+                owner, repo, ref: branch, per_page: 100
+              });
+              const runs = checks.check_runs || [];
+              if (runs.length === 0) {
+                // No CI configured — safe to merge immediately
+                merged = true; break;
+              }
+              const allDone    = runs.every(r => r.status === 'completed');
+              const allPassed  = runs.every(r => ['success','skipped','neutral'].includes(r.conclusion));
+              if (allDone && allPassed) { merged = true; break; }
+              if (allDone && !allPassed) { console.log('CI failed — not auto-merging.'); return; }
+              console.log(`CI still running — waiting 30s (attempt ${i+1}/20)...`);
+              await new Promise(r => setTimeout(r, 30000));
+            }
+            if (!merged) { console.log('CI timed out — not auto-merging.'); return; }
+
+            await github.rest.pulls.merge({
+              owner, repo,
+              pull_number: pr.number,
+              merge_method: 'squash',
+              commit_title: `Agent: ${pr.title} (#${pr.number})`
+            });
+            console.log('Auto-merged PR #' + pr.number);
+
+
+      # ======================================================
+      # NOTIFY: PR OPENED or FAILED
+      # ======================================================
+
+      - name: Notify PR opened
+        if: steps.derive-task.outputs.should_run == 'true' && job.status == 'success'
+        run: |
+          python scripts/notify.py pr \
+            "${{ steps.derive-task.outputs.task }}" \
+            "${{ github.server_url }}/${{ steps.derive-task.outputs.target_repo }}/pulls"
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify run failed
+        if: steps.derive-task.outputs.should_run == 'true' && job.status != 'success'
+        run: |
+          python scripts/notify.py fail \
+            "${{ steps.derive-task.outputs.task }}" \
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
 
       # ======================================================

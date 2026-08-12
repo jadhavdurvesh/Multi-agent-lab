@@ -227,6 +227,26 @@ jobs:
               body: `Run #${context.runNumber} ended with status: ${conclusion}. Re-queued for retry.`
             });
 
+      - name: Notify PR opened
+        if: steps.derive-task.outputs.should_run == 'true' && job.status == 'success'
+        run: |
+          python scripts/notify.py pr \
+            "${{ steps.derive-task.outputs.task }}" \
+            "${{ github.server_url }}/${{ github.repository }}/pulls"
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify run failed
+        if: steps.derive-task.outputs.should_run == 'true' && job.status != 'success'
+        run: |
+          python scripts/notify.py fail \
+            "${{ steps.derive-task.outputs.task }}" \
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
       - name: Upload run logs
         if: always()
         uses: actions/upload-artifact@v4
