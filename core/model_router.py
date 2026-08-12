@@ -49,18 +49,31 @@ class ModelRouter:
         entry["completion_tokens"] += result.get("completion_tokens", 0)
         self._save_usage()
 
+    _TRANSIENT = ("429", "500", "502", "503", "504")
+    _MAX_RETRIES = 3
+
     def call(self, agent_name: str, system: str, user: str, max_tokens: int = 2000) -> dict:
+        import time
         chain = self.providers.get(agent_name)
         if not chain:
             raise ValueError(f"No provider configured for agent '{agent_name}' in config/agents.yaml")
         last_error = None
         for provider in chain:
-            try:
-                result = provider.complete(system, user, max_tokens=max_tokens)
-                self._record(result)
-                return result
-            except Exception as e:
-                print(f"[ROUTER] Provider '{getattr(provider, 'name', '?')}' failed: {e}. Trying next.")
-                last_error = e
-                continue
+            name = getattr(provider, "name", "?")
+            is_transient_capable = type(provider).__name__ != "MockProvider"
+            attempts = self._MAX_RETRIES if is_transient_capable else 1
+            for attempt in range(attempts):
+                try:
+                    result = provider.complete(system, user, max_tokens=max_tokens)
+                    self._record(result)
+                    return result
+                except Exception as e:
+                    last_error = e
+                    if any(code in str(e) for code in self._TRANSIENT) and attempt < attempts - 1:
+                        wait = 2 ** attempt
+                        print(f"[ROUTER] {name} transient error (attempt {attempt+1}/{attempts}): {e}. Retrying in {wait}s...")
+                        time.sleep(wait)
+                        continue
+                    print(f"[ROUTER] {name} failed: {e}. Trying next provider.")
+                    break
         raise RuntimeError(f"All providers exhausted for agent '{agent_name}': {last_error}")
