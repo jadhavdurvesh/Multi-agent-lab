@@ -27,12 +27,12 @@ permissions:
 
 concurrency:
   group: multi-agent-lab-run
-  cancel-in-progress: false   # never cancel a run mid-commit
+  cancel-in-progress: true   # never cancel a run mid-commit
 
 jobs:
   run-agents:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@v4
