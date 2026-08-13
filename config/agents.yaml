@@ -33,6 +33,13 @@
 # NOTE (2026-08-11): Updated developer chain — removed OpenRouter
 # qwen/qwen3-coder:free (404 — model pulled from free roster).
 # Developer now prioritises Gemini → Groq → Cerebras.
+#
+# Second Gemini key (GEMINI_API_KEY_2):
+# Add a second Google AI Studio key from a different Google account as
+# GEMINI_API_KEY_2 in repo secrets. Every agent now tries key-1 first,
+# then key-2 if key-1 is rate-limited. Gemini free tier is ~1500 req/day
+# per key — two keys effectively doubles available quota before any paid
+# tier is needed.
 # =============================================================================
 
 agents:
@@ -48,7 +55,11 @@ agents:
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
-        model: gemini-2.5-flash   # verify current free-tier model at ai.google.dev/gemini-api/docs/models
+        model: gemini-2.5-flash
+      - provider: gemini_2
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY_2
+        model: gemini-2.5-flash
       - provider: cerebras
         base_url: https://api.cerebras.ai/v1
         api_key_env: CEREBRAS_API_KEY
@@ -66,6 +77,10 @@ agents:
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
+        model: gemini-2.5-flash
+      - provider: gemini_2
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY_2
         model: gemini-2.5-flash
       - provider: cerebras
         base_url: https://api.cerebras.ai/v1
@@ -89,6 +104,10 @@ agents:
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
         model: gemini-2.5-flash
+      - provider: gemini_2
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY_2
+        model: gemini-2.5-flash
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
@@ -106,6 +125,10 @@ agents:
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
+        model: gemini-2.5-flash
+      - provider: gemini_2
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY_2
         model: gemini-2.5-flash
       - provider: cerebras
         base_url: https://api.cerebras.ai/v1
@@ -128,6 +151,10 @@ agents:
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
+        model: gemini-2.5-flash
+      - provider: gemini_2
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY_2
         model: gemini-2.5-flash
       - provider: cerebras
         base_url: https://api.cerebras.ai/v1
