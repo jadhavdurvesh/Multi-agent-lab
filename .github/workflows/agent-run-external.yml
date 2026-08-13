@@ -69,7 +69,7 @@ permissions:
 
 concurrency:
   group: multi-agent-lab-external-${{ github.event.inputs.target_repo || 'jadhavdurvesh/psychic-dollop' }}
-  cancel-in-progress: false
+  cancel-in-progress: true   # cancel stale run if a new trigger fires — prevents pile-up
 
 
 # ============================================================
@@ -82,7 +82,7 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    timeout-minutes: 45
+    timeout-minutes: 12
 
     steps:
 
@@ -527,7 +527,7 @@ jobs:
       # CONFIGURE GIT
       # ======================================================
 
-      - name: Configure git identity for agent commits
+      - name: Configure git identity and push credentials for agent commits
 
         if: steps.derive-task.outputs.should_run == 'true'
 
@@ -538,6 +538,15 @@ jobs:
           git config user.name "multi-agent-lab bot"
 
           git config user.email "actions@users.noreply.github.com"
+
+          # Embed the token in the remote URL so git push works without a
+          # credential prompt. actions/checkout sets up read auth only —
+          # writing to a *different* repo requires this explicit step.
+          TARGET="${{ steps.derive-task.outputs.target_repo }}"
+          git remote set-url origin "https://x-access-token:${{ secrets.TARGET_REPO_PAT }}@github.com/${TARGET}.git"
+
+        env:
+          TARGET_REPO_PAT: ${{ secrets.TARGET_REPO_PAT }}
 
 
       # ======================================================
