@@ -786,6 +786,34 @@ jobs:
       # NOTIFY: PR OPENED or FAILED
       # ======================================================
 
+      - name: Comment on originating issue with PR link
+        if: steps.derive-task.outputs.should_run == 'true' && job.status == 'success'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.TARGET_REPO_PAT }}
+          script: |
+            const targetRepo = '${{ steps.derive-task.outputs.target_repo }}';
+            const [owner, repo] = targetRepo.split('/');
+            const issueNum = parseInt('${{ steps.derive-task.outputs.issue_number }}', 10);
+            const branch = '${{ steps.derive-task.outputs.branch }}-${{ github.run_number }}';
+
+            if (!issueNum) { console.log('No issue number — skipping comment.'); return; }
+
+            // Find the PR for this branch
+            const { data: prs } = await github.rest.pulls.list({
+              owner, repo, state: 'open', per_page: 50
+            });
+            const pr = prs.find(p => p.head.ref === branch);
+            const prLink = pr ? pr.html_url : `(branch: ${branch})`;
+
+            await github.rest.issues.createComment({
+              owner, repo,
+              issue_number: issueNum,
+              body: `🤖 **multi-agent-lab** finished working on this task.\n\nPR: ${prLink}\n\n_Architect → Planner → Developer → Tester → Reviewer pipeline._`,
+            });
+            console.log(`Commented on issue #${issueNum}`);
+
+
       - name: Notify PR opened
         if: steps.derive-task.outputs.should_run == 'true' && job.status == 'success'
         run: |
