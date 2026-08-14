@@ -126,6 +126,11 @@ class Orchestrator:
         else:
             print("[GITHUB] Branch pushed — open PR manually.")
 
+        # Generate run summary report
+        report = self.tasks.generate_report(task, branch, pr_url)
+        print("\n[SUMMARY]")
+        print(report)
+
         return "Done. Branch: " + branch + (f" | PR: {pr_url}" if pr_url else "")
 
     def _create_pr(self, branch: str, task: str, spec: dict) -> str | None:
