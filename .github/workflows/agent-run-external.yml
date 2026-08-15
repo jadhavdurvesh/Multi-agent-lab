@@ -69,7 +69,7 @@ permissions:
 
 concurrency:
   group: multi-agent-lab-external-${{ github.event.inputs.target_repo || 'jadhavdurvesh/psychic-dollop' }}
-  cancel-in-progress: true   # cancel stale run if a new trigger fires — prevents pile-up
+  cancel-in-progress: false  # rely on issue 'agent-task-running' label to skip concurrent triggers
 
 
 # ============================================================
@@ -82,7 +82,7 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    timeout-minutes: 12
+    timeout-minutes: 20
 
     steps:
 
@@ -522,6 +522,13 @@ jobs:
 
           pip install -r requirements.txt
 
+          # Also install target-repo's requirements (if any) so the Tester
+          # agent can run tests after the Developer adds new dependencies.
+          # This re-runs after every Developer change via the agent loop.
+          if [ -f target-repo/requirements.txt ]; then
+            pip install -r target-repo/requirements.txt || true
+          fi
+
 
       # ======================================================
       # CONFIGURE GIT
@@ -539,9 +546,15 @@ jobs:
 
           git config user.email "actions@users.noreply.github.com"
 
-          # Embed the token in the remote URL so git push works without a
-          # credential prompt. actions/checkout sets up read auth only —
-          # writing to a *different* repo requires this explicit step.
+          # Fail fast if TARGET_REPO_PAT is not set — otherwise git push
+          # silently fails (403) and the run reports success with no branch.
+          if [ -z "${{ secrets.TARGET_REPO_PAT }}" ]; then
+            echo "ERROR: TARGET_REPO_PAT secret is not set."
+            echo "Add the psychic-dollop PAT as a secret named TARGET_REPO_PAT"
+            echo "in Multi-agent-lab → Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
           TARGET="${{ steps.derive-task.outputs.target_repo }}"
           git remote set-url origin "https://x-access-token:${{ secrets.TARGET_REPO_PAT }}@github.com/${TARGET}.git"
 
