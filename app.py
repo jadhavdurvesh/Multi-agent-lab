@@ -2,11 +2,11 @@ from flask import Flask
 
 app = Flask(__name__)
 
-my_string_variable = "Hello, Flask World!"
+my_string_variable = "Hello from Flask!"
 
 @app.route('/my-string', methods=['GET'])
 def get_my_string():
     return my_string_variable
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True)
