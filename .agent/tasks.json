@@ -1,8 +1,24 @@
 [
   {
-    "id": 1,
-    "title": "Add a health check endpoint",
-    "description": "[MOCK RESPONSE from groq] system='You are the Planner agent. Given a task and an architecture ' user='Task:\\nAdd a health check endpoint\\n\\nArchitecture:\\n[MOCK RESPO'",
-    "files": []
+    "title": "Add /hello endpoint to app.py with test",
+    "approach": "Create `app.py` with a Flask application that exposes a `/hello` GET endpoint returning `{\"message\": \"Hello, World!\"}`. A new test file `tests/test_app.py` will be created to verify the endpoint's status code and JSON response using Flask's test client. The `requirements.txt` will be updated to include `Flask`.",
+    "files_to_modify": [
+      "requirements.txt"
+    ],
+    "files_to_create": [
+      "app.py",
+      "tests/test_app.py"
+    ],
+    "tests_to_write": [
+      "Verify that the GET /hello endpoint returns an HTTP 200 OK status.",
+      "Verify that the GET /hello endpoint returns the JSON body `{\"message\": \"Hello, World!\"}`."
+    ],
+    "edge_cases": [
+      "Ensure Flask is correctly added to `requirements.txt` to avoid dependency errors.",
+      "Handle cases where the endpoint path might be misspelled or the response content is incorrect."
+    ],
+    "dependencies": [
+      "Flask"
+    ]
   }
 ]
