@@ -85,6 +85,13 @@ class Orchestrator:
         if not edits:
             return "Developer produced no file edits — nothing to commit."
 
+        # Reinstall requirements if Developer modified requirements.txt.
+        # Critical: if Developer adds 'flask' to requirements.txt but pip
+        # never installs it, every Tester run fails until timeout.
+        if any("requirements" in str(op.get("path", "")) for op in edits):
+            print("[ORCHESTRATOR] requirements.txt changed — reinstalling...")
+            self.terminal.run_command("pip install -r requirements.txt -q")
+
         # ── Step 5: Tester runs — retry loop ────────────────────────────────
         passed = False
         for i in range(self.max_iterations):
@@ -95,7 +102,9 @@ class Orchestrator:
                 passed = True
                 break
             print("[DEVELOPER] Fixing based on test output...")
-            self.developer.fix(result["stderr"] or result["stdout"], spec)
+            fix_edits = self.developer.fix(result["stderr"] or result["stdout"], spec)
+            if any("requirements" in str(op.get("path", "")) for op in fix_edits):
+                self.terminal.run_command("pip install -r requirements.txt -q")
 
         if not passed:
             print("[ORCHESTRATOR] Tests still failing — committing for review.")
