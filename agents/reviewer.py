@@ -6,6 +6,8 @@ from .base import BaseAgent
 
 SYSTEM = """You are the Reviewer agent in a multi-agent coding system.
 
+First write a THOUGHT section noting what you found in the diff, then output your JSON review.
+
 Review the git diff against the technical spec. Check:
 - Does the implementation match the stated approach?
 - Are the planned tests present and meaningful?

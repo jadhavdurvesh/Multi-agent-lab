@@ -15,6 +15,8 @@ import subprocess
 
 import requests
 
+import time
+
 from agents.architect import ArchitectAgent
 from agents.developer import DeveloperAgent
 from agents.planner import PlannerAgent
@@ -25,18 +27,35 @@ from agents.tester import TesterAgent
 class Orchestrator:
     def __init__(self, router, tasks, fs, terminal, git,
                  safe_mode: bool = True, max_iterations: int = 3,
-                 test_command: str = "pytest -q", tdd_mode: bool = False):
+                 test_command: str = "pytest -q", tdd_mode: bool = False,
+                 wall_time_limit: int = 0):
         self.tasks = tasks
         self.git = git
         self.safe_mode = safe_mode
         self.max_iterations = max_iterations
         self.tdd_mode = tdd_mode
+        self.wall_time_limit = wall_time_limit  # seconds; 0 = no limit
+        self._start_time = time.time()
 
         self.architect = ArchitectAgent(router, tasks, fs)
         self.planner   = PlannerAgent(router, tasks, fs)
         self.developer = DeveloperAgent(router, tasks, fs)
         self.tester    = TesterAgent(router, tasks, fs, terminal, test_command, tdd_mode)
         self.reviewer  = ReviewerAgent(router, tasks, fs, git)
+
+    def _elapsed(self) -> float:
+        return time.time() - self._start_time
+
+    def _near_timeout(self) -> bool:
+        """Return True if we are within 90 seconds of the wall-time limit.
+
+        Inspired by mini-swe-agent's wall_time_limit_seconds: the agent
+        monitors its own elapsed time and exits cleanly rather than being
+        killed mid-operation by the job timeout.
+        """
+        if not self.wall_time_limit:
+            return False
+        return self._elapsed() >= self.wall_time_limit - 90
 
     def _confirm(self, prompt: str) -> bool:
         if not self.safe_mode:
@@ -100,6 +119,10 @@ class Orchestrator:
             print(f"[TESTER] {status} (attempt {i + 1}/{self.max_iterations})")
             if result["passed"]:
                 passed = True
+                break
+            if self._near_timeout():
+                print(f"[ORCHESTRATOR] Approaching wall-time limit ({self._elapsed():.0f}s elapsed) "
+                      f"— committing partial work and exiting early.")
                 break
             print("[DEVELOPER] Fixing based on test output...")
             fix_edits = self.developer.fix(result["stderr"] or result["stdout"], spec)

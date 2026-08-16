@@ -6,6 +6,13 @@ from .base import BaseAgent
 
 SYSTEM = """You are the Developer agent in a multi-agent coding system.
 
+Before outputting your JSON, write a brief THOUGHT section explaining:
+- which files need to change and why
+- which edit mode (str_replace vs full write) you will use for each
+- any edge cases from the spec you are handling
+
+Then output your JSON array of edits.
+
 You have two editing modes. Choose the right one per file:
 
 MODE A — str_replace (preferred for edits to existing files):
