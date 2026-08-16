@@ -1,166 +1,104 @@
-# =============================================================================
-# Multi-Agent Lab — Provider / Model Configuration
-# =============================================================================
+# Agent → provider fallback chain.
+# Groq is first: responses in 1-3 seconds, high free-tier daily quota.
+# Gemini is fallback: slower (5-30s) but larger context window.
+# Per-request timeout is 20s — if a provider hangs, it fails fast.
 #
-# Maps each agent role to one or more providers, tried in order (fallback
-# chain). Any provider exposing an OpenAI-compatible /chat/completions
-# endpoint works here — OpenRouter, Groq, Cerebras, Gemini, Together, a
-# local Ollama/vLLM server, etc.
+# Free tier limits (approximate, check provider docs):
+#   Groq:     14,400 req/day, 30 req/min per model
+#   Gemini:   1,500 req/day per key (we have 2 keys = 3,000/day)
+#   Cerebras: ~1,000 req/day
 #
-# IMPORTANT: free-tier model lineups rotate frequently (OpenRouter's ":free"
-# roster in particular changes week to week — models get added, repriced, or
-# pulled with no notice). The model IDs below are a working starting point,
-# not a permanent list. Before relying on this, check each provider's docs.
-#
-# All four providers below have a genuine free tier, no card required:
-#   - OpenRouter: ":free"-suffixed models are free but rotate weekly.
-#     openrouter.ai/models (filter: Free)
-#   - Groq: no card. Was cut in 2026 — most models are now ~1,000
-#     requests/day (down from 14,400). console.groq.com/docs/models
-#   - Gemini (Google AI Studio): official OpenAI-compat endpoint.
-#     Free-tier prompts may be used by Google to improve their products —
-#     don't point it at anything sensitive.
-#     aistudio.google.com/apikey · ai.google.dev/gemini-api/docs/rate-limits
-#   - Cerebras: fastest raw throughput of the group.
-#     cloud.cerebras.ai · inference-docs.cerebras.ai
-#
-# DeepInfra was tried and dropped from these chains on purpose — it's not
-# actually a free tier (pay-per-token, needs a card/prepay), so it just
-# fails with 402 Payment Required on an unfunded account. Add it back the
-# same way as the others (provider/base_url/api_key_env/model block) if you
-# ever add billing there.
-#
-# NOTE (2026-08-11): Updated developer chain — removed OpenRouter
-# qwen/qwen3-coder:free (404 — model pulled from free roster).
-# Developer now prioritises Gemini → Groq → Cerebras.
-#
-# Second Gemini key (GEMINI_API_KEY_2):
-# Add a second Google AI Studio key from a different Google account as
-# GEMINI_API_KEY_2 in repo secrets. Every agent now tries key-1 first,
-# then key-2 if key-1 is rate-limited. Gemini free tier is ~1500 req/day
-# per key — two keys effectively doubles available quota before any paid
-# tier is needed.
-# =============================================================================
+# To add GEMINI_API_KEY_2: get a second key from aistudio.google.com
+# with a different Google account and add it to repo secrets.
 
 agents:
-  # ---------------------------------------------------------------------------
-  # ARCHITECT — analyses the target repo and decides *what* needs to change
-  # ---------------------------------------------------------------------------
   architect:
     providers:
-      - provider: openrouter
-        base_url: https://openrouter.ai/api/v1
-        api_key_env: OPENROUTER_API_KEY
-        model: meta-llama/llama-3.3-70b-instruct:free
-      - provider: gemini
-        base_url: https://generativelanguage.googleapis.com/v1beta/openai
-        api_key_env: GEMINI_API_KEY
-        model: gemini-2.5-flash
-      - provider: gemini_2
-        base_url: https://generativelanguage.googleapis.com/v1beta/openai
-        api_key_env: GEMINI_API_KEY_2
-        model: gemini-2.5-flash
-      - provider: cerebras
-        base_url: https://api.cerebras.ai/v1
-        api_key_env: CEREBRAS_API_KEY
-        model: gemma-4-31b   # verify current catalog at inference-docs.cerebras.ai
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
+      - provider: gemini
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY
+        model: gemini-2.0-flash
+      - provider: gemini_2
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY_2
+        model: gemini-2.0-flash
+      - provider: cerebras
+        base_url: https://api.cerebras.ai/v1
+        api_key_env: CEREBRAS_API_KEY
+        model: llama-3.3-70b
 
-  # ---------------------------------------------------------------------------
-  # PLANNER — breaks the architecture plan into ordered subtasks
-  # ---------------------------------------------------------------------------
   planner:
     providers:
-      - provider: gemini
-        base_url: https://generativelanguage.googleapis.com/v1beta/openai
-        api_key_env: GEMINI_API_KEY
-        model: gemini-2.5-flash
-      - provider: gemini_2
-        base_url: https://generativelanguage.googleapis.com/v1beta/openai
-        api_key_env: GEMINI_API_KEY_2
-        model: gemini-2.5-flash
-      - provider: cerebras
-        base_url: https://api.cerebras.ai/v1
-        api_key_env: CEREBRAS_API_KEY
-        model: gemma-4-31b
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
+      - provider: gemini
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY
+        model: gemini-2.0-flash
+      - provider: gemini_2
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY_2
+        model: gemini-2.0-flash
+      - provider: cerebras
+        base_url: https://api.cerebras.ai/v1
+        api_key_env: CEREBRAS_API_KEY
+        model: llama-3.3-70b
 
-  # ---------------------------------------------------------------------------
-  # DEVELOPER — writes the actual code for each subtask
-  # ---------------------------------------------------------------------------
   developer:
     providers:
-      # NOTE: OpenRouter qwen/qwen3-coder:free was here originally but it's
-      # been pulled from the free roster (404 as of 2026-08-11). Replaced
-      # with Gemini as the primary coding model. If a new free coder model
-      # appears on OpenRouter, add it back above this block.
-      - provider: gemini
-        base_url: https://generativelanguage.googleapis.com/v1beta/openai
-        api_key_env: GEMINI_API_KEY
-        model: gemini-2.5-flash
-      - provider: gemini_2
-        base_url: https://generativelanguage.googleapis.com/v1beta/openai
-        api_key_env: GEMINI_API_KEY_2
-        model: gemini-2.5-flash
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
-      - provider: cerebras   # fallback once Gemini/Groq are rate-limited
-        base_url: https://api.cerebras.ai/v1
-        api_key_env: CEREBRAS_API_KEY
-        model: gemma-4-31b  # matches the known-working Cerebras model used by other agents
-
-  # ---------------------------------------------------------------------------
-  # TESTER — runs the test suite and reports failures back to the developer
-  # ---------------------------------------------------------------------------
-  tester:
-    providers:
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
-        model: gemini-2.5-flash
+        model: gemini-2.0-flash
       - provider: gemini_2
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY_2
-        model: gemini-2.5-flash
+        model: gemini-2.0-flash
       - provider: cerebras
         base_url: https://api.cerebras.ai/v1
         api_key_env: CEREBRAS_API_KEY
-        model: llama3.1-8b
+        model: llama-3.3-70b
+
+  tester:
+    providers:
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.1-8b-instant
-
-  # ---------------------------------------------------------------------------
-  # REVIEWER — reviews the final diff for correctness, style, and security
-  # ---------------------------------------------------------------------------
-  reviewer:
-    providers:
-      - provider: openrouter
-        base_url: https://openrouter.ai/api/v1
-        api_key_env: OPENROUTER_API_KEY
-        model: meta-llama/llama-3.3-70b-instruct:free
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
-        model: gemini-2.5-flash
+        model: gemini-2.0-flash
       - provider: gemini_2
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY_2
-        model: gemini-2.5-flash
-      - provider: cerebras
-        base_url: https://api.cerebras.ai/v1
-        api_key_env: CEREBRAS_API_KEY
-        model: gemma-4-31b
+        model: gemini-2.0-flash
+
+  reviewer:
+    providers:
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
+      - provider: gemini
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY
+        model: gemini-2.0-flash
+      - provider: gemini_2
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY_2
+        model: gemini-2.0-flash
+      - provider: cerebras
+        base_url: https://api.cerebras.ai/v1
+        api_key_env: CEREBRAS_API_KEY
+        model: llama-3.3-70b

@@ -46,17 +46,23 @@ jobs:
             }
 
             // Fetch all open agent-task issues once
+            // Check ALL open issues regardless of label — prevents the seeder
+            // from creating duplicates when tasks are labeled agent-task-done
+            // (which removes them from the agent-task filter but they still exist)
             const openIssues = await github.paginate(
               github.rest.issues.listForRepo,
               {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                state: 'open',
-                labels: 'agent-task',
+                state: 'all',
                 per_page: 100,
               }
             );
-            const existingTitles = new Set(openIssues.map(i => i.title.trim()));
+            const existingTitles = new Set(
+              openIssues
+                .filter(i => !i.pull_request)
+                .map(i => i.title.trim())
+            );
 
             // Ensure required labels exist
             const requiredLabels = [

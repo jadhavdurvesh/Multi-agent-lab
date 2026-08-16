@@ -37,7 +37,7 @@ class OpenAICompatibleProvider:
         for attempt in range(max_attempts):
             start = time.time()
             try:
-                resp = requests.post(f"{self.base_url}/chat/completions", json=payload, headers=headers, timeout=120)
+                resp = requests.post(f"{self.base_url}/chat/completions", json=payload, headers=headers, timeout=20)
                 latency = time.time() - start
 
                 if resp.status_code in retryable_status_codes and attempt < max_attempts - 1:
