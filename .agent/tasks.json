@@ -1,8 +1,22 @@
 [
   {
-    "id": 1,
-    "title": "Add a health check endpoint",
-    "description": "[MOCK RESPONSE from groq] system='You are the Planner agent. Given a task and an architecture ' user='Task:\\nAdd a health check endpoint\\n\\nArchitecture:\\n[MOCK RESPO'",
-    "files": []
+    "title": "Add Flask app with exposed string endpoint",
+    "approach": "Create a new file `app.py` that initializes a Flask web application. Define a string variable within this file and create a GET endpoint `/my-string` that returns the value of this string. Update `requirements.txt` to include the Flask dependency.",
+    "files_to_modify": [
+      "requirements.txt"
+    ],
+    "files_to_create": [
+      "app.py"
+    ],
+    "tests_to_write": [
+      "Verify that a GET request to `/my-string` on the running Flask app returns the expected string."
+    ],
+    "edge_cases": [
+      "Ensure the Flask application starts correctly on the specified port.",
+      "Handle potential network issues or server unavailability when making a request to the endpoint."
+    ],
+    "dependencies": [
+      "Flask"
+    ]
   }
 ]
