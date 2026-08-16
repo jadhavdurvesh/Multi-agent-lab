@@ -1,27 +1,40 @@
 from __future__ import annotations
 
 import json
-from core.parse import extract_file_edits
+from core.parse import extract_file_edits, extract_object
 from .base import BaseAgent
 
 SYSTEM = """You are the Developer agent in a multi-agent coding system.
 
-Your ONLY output is a raw JSON array of file edits — nothing else.
+You have two editing modes. Choose the right one per file:
 
-Format:
+MODE A — str_replace (preferred for edits to existing files):
+Use when you need to change a specific section of an existing file.
+Output a JSON array of str_replace operations:
 [
-  {"path": "relative/path/to/file.py", "content": "full new file content here"},
-  {"path": "another/file.md", "content": "full content here"}
+  {"mode": "str_replace", "path": "src/app.py",
+   "old_str": "exact text to find (must be unique in the file)",
+   "new_str": "replacement text"}
+]
+
+MODE B — full write (required for new files or major rewrites):
+Output a JSON array of full file writes:
+[
+  {"mode": "write", "path": "src/new_file.py", "content": "full file content here"}
+]
+
+You can mix both modes in one response:
+[
+  {"mode": "str_replace", "path": "existing.py", "old_str": "...", "new_str": "..."},
+  {"mode": "write", "path": "tests/test_new.py", "content": "..."}
 ]
 
 Rules:
-- Output ONLY the JSON array. No explanation, no markdown fences, no backticks.
-- Include ONLY files you are creating or changing.
-- "content" must be the COMPLETE new file content, not a diff or snippet.
-- Cover the edge cases listed in the spec.
-- Include the tests described in the spec in the appropriate test file.
-- If new dependencies are listed in the spec, add them to requirements.txt.
-- Preserve existing code style and conventions.
+- Output ONLY the JSON array. No prose, no markdown fences, no backticks.
+- For str_replace: old_str must appear exactly once in the file.
+- For write: content is the COMPLETE file, not a snippet.
+- Cover the edge cases and include the tests listed in the spec.
+- If new pip packages are needed, add them to requirements.txt with a write operation.
 - If nothing needs changing, output: []
 """
 
@@ -30,35 +43,64 @@ class DeveloperAgent(BaseAgent):
     name = "developer"
 
     def implement(self, spec: dict, context_files: list[str]) -> list[dict]:
-        context = self._read_context(context_files)
-        user = f"Technical spec:\n{json.dumps(spec, indent=2)}\n\nCurrent file contents:\n{context}"
+        context = self._read_context_windowed(context_files)
+        user = f"Technical spec:\n{json.dumps(spec, indent=2)}\n\nRelevant files:\n{context}"
         return self._call_and_apply(user, spec)
 
     def fix(self, feedback: str, spec: dict) -> list[dict]:
         user = (
             f"Your previous implementation of '{spec.get('title')}' needs fixes.\n\n"
-            f"Original spec approach: {spec.get('approach', '')}\n\n"
+            f"Spec approach: {spec.get('approach', '')}\n\n"
             f"Feedback:\n{feedback}\n\n"
-            f"Output the corrected files as a raw JSON array. No fences, no prose."
+            f"Output a JSON array of str_replace or write operations. No fences, no prose."
         )
         return self._call_and_apply(user, spec)
 
-    def _read_context(self, paths: list[str]) -> str:
+    def _read_context_windowed(self, paths: list[str]) -> str:
+        """Read relevant files using windowed view (100 lines) to avoid context overflow.
+        Inspired by SWE-agent's file viewer design.
+        """
         chunks = []
         for p in paths:
             try:
-                chunks.append(f"### {p}\n{self.fs.read_file(p)}")
+                # Use windowed view for large files, full read for small ones
+                full = self.fs.read_file(p)
+                if len(full.splitlines()) > 100:
+                    chunks.append(self.fs.read_file_window(p, window=100))
+                else:
+                    chunks.append(f"### {p}\n{full}")
             except (FileNotFoundError, ValueError):
-                continue
+                chunks.append(f"### {p}\n(new file — does not exist yet)")
         return "\n\n".join(chunks)
 
     def _call_and_apply(self, user: str, spec: dict) -> list[dict]:
         raw = self.ask(SYSTEM, user)
-        edits = extract_file_edits(raw)
-        if not edits:
-            print(f"[DEVELOPER] Warning: no file edits parsed for "
-                  f"'{spec.get('title')}'. Raw starts with: {raw[:120]!r}")
-        for edit in edits:
-            self.fs.write_file(edit["path"], edit["content"])
-            print(f"[DEVELOPER] Wrote: {edit['path']}")
-        return edits
+        operations = extract_file_edits(raw)
+        if not operations:
+            print(f"[DEVELOPER] Warning: no operations parsed for "
+                  f"'{spec.get('title')}'. Raw starts: {raw[:120]!r}")
+            return []
+
+        applied = []
+        for op in operations:
+            mode = op.get("mode", "write")
+            path = op.get("path", "")
+
+            if mode == "str_replace":
+                result = self.fs.str_replace(
+                    path, op.get("old_str", ""), op.get("new_str", "")
+                )
+                if result["ok"]:
+                    print(f"[DEVELOPER] str_replace: {path}")
+                    applied.append(op)
+                else:
+                    print(f"[DEVELOPER] str_replace FAILED {path}: {result['error']}")
+            else:
+                result = self.fs.write_file_checked(path, op.get("content", ""))
+                if result["ok"]:
+                    print(f"[DEVELOPER] wrote: {path}")
+                    applied.append(op)
+                else:
+                    print(f"[DEVELOPER] write FAILED {path}: {result.get('error')}")
+
+        return applied
