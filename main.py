@@ -29,6 +29,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Use a mock provider instead of real API calls")
     parser.add_argument("--test-command", default="pytest -q", help="Command the Tester agent runs, e.g. 'npm test'")
     parser.add_argument("--tdd", action="store_true", help="TDD mode: Tester writes failing tests before Developer implements")
+    parser.add_argument("--wall-time", type=int, default=0, help="Exit cleanly N seconds before job kill. E.g. 1080 for 18-min safety margin inside a 20-min job.")
     args = parser.parse_args()
 
     fs = FileSystemTools(args.repo)
@@ -42,6 +43,7 @@ def main() -> None:
         safe_mode=not args.autonomous,
         test_command=args.test_command,
         tdd_mode=args.tdd,
+        wall_time_limit=args.wall_time,
     )
     result = orchestrator.run(args.task, branch=args.branch)
     print(f"\n[DONE] {result}")

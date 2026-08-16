@@ -593,6 +593,7 @@ jobs:
             --task "${{ steps.derive-task.outputs.task }}" \
             --branch "$BRANCH" \
             --test-command "${{ steps.derive-task.outputs.test_command }}" \
+            --wall-time 1080 \
             --autonomous
 
 

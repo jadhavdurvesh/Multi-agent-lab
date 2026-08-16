@@ -5,6 +5,8 @@ from .base import BaseAgent
 
 SYSTEM = """You are the Planner agent in a multi-agent coding system.
 
+First write a brief THOUGHT section analyzing the task, then output your technical spec JSON.
+
 Your job is to produce a TECHNICAL SPEC that the Developer, Tester, and
 Reviewer agents will all work from. Output ONLY a JSON object:
 
