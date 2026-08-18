@@ -247,6 +247,23 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
+      - name: Record run in AGENT_ACTIVITY.md
+        if: always() && steps.derive-task.outputs.should_run == 'true'
+        run: |
+          EVENT="done"
+          if [ "${{ job.status }}" != "success" ]; then EVENT="failed"; fi
+
+          python scripts/record_run.py "$EVENT" \
+            "${{ steps.derive-task.outputs.task }}" \
+            "jadhavdurvesh/Multi-agent-lab"
+
+          git config user.name "jadhavdurvesh"
+          git config user.email "89296288+jadhavdurvesh@users.noreply.github.com"
+          git add AGENT_ACTIVITY.md
+          git diff --cached --quiet || \
+            git commit -m "chore: agent run $(date -u +%Y-%m-%d) [skip ci]"
+          git push origin main || echo "push skipped"
+
       - name: Upload run logs
         if: always()
         uses: actions/upload-artifact@v4
