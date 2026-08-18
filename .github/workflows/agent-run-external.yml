@@ -542,9 +542,9 @@ jobs:
 
         run: |
 
-          git config user.name "multi-agent-lab bot"
+          git config user.name "jadhavdurvesh"
 
-          git config user.email "actions@users.noreply.github.com"
+          git config user.email "89296288+jadhavdurvesh@users.noreply.github.com"
 
           # Fail fast if TARGET_REPO_PAT is not set — otherwise git push
           # silently fails (403) and the run reports success with no branch.
@@ -847,6 +847,28 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+
+      # ======================================================
+      # HEARTBEAT — commit to main so run counts as contribution
+      # ======================================================
+
+      - name: Record run in AGENT_ACTIVITY.md
+        if: always() && steps.derive-task.outputs.should_run == 'true'
+        run: |
+          EVENT="done"
+          if [ "${{ job.status }}" != "success" ]; then EVENT="failed"; fi
+
+          python scripts/record_run.py "$EVENT" \
+            "${{ steps.derive-task.outputs.task }}" \
+            "${{ steps.derive-task.outputs.target_repo }}"
+
+          git -C "$GITHUB_WORKSPACE" config user.name "jadhavdurvesh"
+          git -C "$GITHUB_WORKSPACE" config user.email "89296288+jadhavdurvesh@users.noreply.github.com"
+          git -C "$GITHUB_WORKSPACE" add AGENT_ACTIVITY.md
+          git -C "$GITHUB_WORKSPACE" diff --cached --quiet || \
+            git -C "$GITHUB_WORKSPACE" commit -m "chore: agent run $(date -u +%Y-%m-%d) [skip ci]"
+          git -C "$GITHUB_WORKSPACE" push origin main || echo "push skipped (no changes)"
 
 
       # ======================================================
