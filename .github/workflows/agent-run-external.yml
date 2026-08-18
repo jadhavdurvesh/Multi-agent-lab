@@ -603,7 +603,7 @@ jobs:
 
       - name: Mark scheduled task status
 
-        if: always() && github.event_name == 'schedule' && steps.derive-task.outputs.issue_number != ''
+        if: always() && steps.derive-task.outputs.issue_number != ''
 
         uses: actions/github-script@v7
 
