@@ -12,9 +12,14 @@ from pathlib import Path
 class TaskManager:
     def __init__(self, repo_root: str):
         self.root = Path(repo_root).resolve()
+        if not self.root.exists():
+            raise FileNotFoundError(
+                f"Target repo path does not exist: {self.root}\n"
+                f"Check that --repo points to a valid local git repository."
+            )
         self.agent_dir = self.root / ".agent"
-        self.agent_dir.mkdir(exist_ok=True)
-        (self.agent_dir / "history").mkdir(exist_ok=True)
+        self.agent_dir.mkdir(parents=True, exist_ok=True)
+        (self.agent_dir / "history").mkdir(parents=True, exist_ok=True)
         self.tasks_path = self.agent_dir / "tasks.json"
 
     def read_context(self) -> str:
@@ -42,9 +47,6 @@ class TaskManager:
         return []
 
     def log_event(self, agent: str, event: str, detail: dict) -> None:
-        """Appends one JSON line per event — model calls, test runs, reviews —
-        so a run can be reconstructed and providers/models compared afterward.
-        """
         entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "agent": agent,
@@ -56,15 +58,6 @@ class TaskManager:
             f.write(json.dumps(entry) + "\n")
 
     def generate_report(self, task: str, branch: str, pr_url: str | None = None) -> str:
-        """Generate a markdown run summary from today's history log.
-
-        Covers: which model/provider each agent used, token counts,
-        latency, test pass/fail, reviewer rounds, files written.
-        Written to .agent/SUMMARY.md and also returned as a string.
-        """
-        from datetime import datetime, timezone
-        import json
-
         log_file = self.agent_dir / "history" / f"{datetime.now(timezone.utc):%Y-%m-%d}.jsonl"
         events: list[dict] = []
         if log_file.exists():
@@ -95,16 +88,13 @@ class TaskManager:
                 test_results.append(detail)
 
         lines = [
-            f"# Agent Run Summary",
-            f"",
+            "# Agent Run Summary", "",
             f"**Task:** {task}",
             f"**Branch:** `{branch}`",
             f"**PR:** {pr_url or '_not opened_'}",
-            f"",
-            f"## Agent calls",
-            f"",
-            f"| Agent | Provider | Model | Calls | Prompt tok | Completion tok | Avg latency |",
-            f"|-------|----------|-------|-------|-----------|----------------|-------------|",
+            "", "## Agent calls", "",
+            "| Agent | Provider | Model | Calls | Prompt tok | Completion tok | Avg latency |",
+            "|-------|----------|-------|-------|-----------|----------------|-------------|",
         ]
         for agent, s in agent_stats.items():
             avg_lat = f"{s['latency_s'] / s['calls']:.1f}s" if s["calls"] else "-"
@@ -113,22 +103,13 @@ class TaskManager:
                 f"| {s['prompt_tokens']:,} | {s['completion_tokens']:,} | {avg_lat} |"
             )
 
-        total_prompt = sum(s["prompt_tokens"] for s in agent_stats.values())
-        total_completion = sum(s["completion_tokens"] for s in agent_stats.values())
-        lines += [
-            f"",
-            f"**Total tokens:** {total_prompt + total_completion:,} "
-            f"({total_prompt:,} prompt + {total_completion:,} completion)",
-            f"",
-            f"## Test runs",
-            f"",
-        ]
+        total = sum(s["prompt_tokens"] + s["completion_tokens"] for s in agent_stats.values())
+        lines += ["", f"**Total tokens:** {total:,}", "", "## Test runs", ""]
         if test_results:
             passed = sum(1 for t in test_results if t.get("ok"))
             lines.append(f"{passed}/{len(test_results)} attempts passed.")
             for i, t in enumerate(test_results, 1):
-                status = "✅ PASS" if t.get("ok") else "❌ FAIL"
-                lines.append(f"- Attempt {i}: {status}")
+                lines.append(f"- Attempt {i}: {'✅ PASS' if t.get('ok') else '❌ FAIL'}")
         else:
             lines.append("_No test runs recorded._")
 
