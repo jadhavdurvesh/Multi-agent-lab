@@ -475,6 +475,25 @@ jobs:
 
 
       # ======================================================
+      # HEARTBEAT — commit at START so every run counts immediately
+      # ======================================================
+
+      - name: Record run start in AGENT_ACTIVITY.md
+        if: steps.derive-task.outputs.should_run == 'true'
+        run: |
+          python3 scripts/record_run.py "start" \
+            "${{ steps.derive-task.outputs.task }}" \
+            "${{ steps.derive-task.outputs.target_repo }}"
+
+          git config user.name "jadhavdurvesh"
+          git config user.email "89296288+jadhavdurvesh@users.noreply.github.com"
+          git add AGENT_ACTIVITY.md
+          git diff --cached --quiet || \
+            git commit -m "chore: agent run started $(date -u +%Y-%m-%d) [skip ci]"
+          git push origin main || echo "push skipped"
+
+
+      # ======================================================
       # CHECKOUT TARGET REPOSITORY
       # ======================================================
 
@@ -566,22 +585,6 @@ jobs:
       # RUN AGENTS
       # ======================================================
 
-      - name: Pre-flight checks
-        if: steps.derive-task.outputs.should_run == 'true'
-        run: |
-          echo "=== Environment ==="
-          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
-          echo "Python: $(which python3) $(python3 --version)"
-          echo "PWD: $(pwd)"
-          echo "=== Target repo path ==="
-          TARGET_PATH="$GITHUB_WORKSPACE/target-repo"
-          echo "Path: $TARGET_PATH"
-          ls -la "$TARGET_PATH" || echo "ERROR: target-repo directory does not exist!"
-          echo "=== Imports check ==="
-          python3 -c "import main; print('imports OK')"
-          echo "=== End pre-flight ==="
-
-
       - name: Run agents against target repo
 
         if: steps.derive-task.outputs.should_run == 'true'
@@ -604,7 +607,7 @@ jobs:
           BRANCH="${{ steps.derive-task.outputs.branch }}-${{ github.run_number }}"
 
 
-          python3 main.py \
+          python main.py \
             --repo "$GITHUB_WORKSPACE/target-repo" \
             --task "${{ steps.derive-task.outputs.task }}" \
             --branch "$BRANCH" \
@@ -863,28 +866,6 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-
-      # ======================================================
-      # HEARTBEAT — commit to main so run counts as contribution
-      # ======================================================
-
-      - name: Record run in AGENT_ACTIVITY.md
-        if: always() && steps.derive-task.outputs.should_run == 'true'
-        run: |
-          EVENT="done"
-          if [ "${{ job.status }}" != "success" ]; then EVENT="failed"; fi
-
-          python scripts/record_run.py "$EVENT" \
-            "${{ steps.derive-task.outputs.task }}" \
-            "${{ steps.derive-task.outputs.target_repo }}"
-
-          git -C "$GITHUB_WORKSPACE" config user.name "jadhavdurvesh"
-          git -C "$GITHUB_WORKSPACE" config user.email "89296288+jadhavdurvesh@users.noreply.github.com"
-          git -C "$GITHUB_WORKSPACE" add AGENT_ACTIVITY.md
-          git -C "$GITHUB_WORKSPACE" diff --cached --quiet || \
-            git -C "$GITHUB_WORKSPACE" commit -m "chore: agent run $(date -u +%Y-%m-%d) [skip ci]"
-          git -C "$GITHUB_WORKSPACE" push origin main || echo "push skipped (no changes)"
 
 
       # ======================================================
