@@ -21,6 +21,29 @@ from tools.terminal import TerminalTools
 
 def main() -> None:
     load_dotenv()
+
+    # Check for API keys before doing anything else.
+    # Without at least one key, every provider call returns 403/401 and the
+    # orchestrator raises RuntimeError after ~1 second with no useful message.
+    import os as _os
+    _keys = {
+        "GROQ_API_KEY":     _os.environ.get("GROQ_API_KEY", ""),
+        "GEMINI_API_KEY":   _os.environ.get("GEMINI_API_KEY", ""),
+        "GEMINI_API_KEY_2": _os.environ.get("GEMINI_API_KEY_2", ""),
+        "CEREBRAS_API_KEY": _os.environ.get("CEREBRAS_API_KEY", ""),
+    }
+    _set = [k for k, v in _keys.items() if v]
+    if not _set:
+        print("\n[FATAL] No AI provider API keys found in environment.")
+        print("Add at least ONE of the following as a repository secret in")
+        print("Multi-agent-lab → Settings → Secrets and variables → Actions:")
+        for k in _keys:
+            print(f"  {k}")
+        print("\nGroq is fastest and has the most generous free tier.")
+        print("Get a free key at: https://console.groq.com/keys")
+        import sys as _sys; _sys.exit(1)
+    print(f"[OK] Provider keys present: {', '.join(_set)}")
+
     parser = argparse.ArgumentParser(description="Multi-agent coding system")
     parser.add_argument("--repo", required=True, help="Path to a local git repository")
     parser.add_argument("--task", required=True, help="Description of the feature/change to implement")
