@@ -1,8 +1,4 @@
-"""Tests that config/agents.yaml has the right provider ordering and models.
-
-Groq is primary because it responds in 1-3 seconds vs Gemini's 5-30 seconds.
-With 13-16 model calls per run, slow primary providers cause 20-minute timeouts.
-"""
+"""Tests that config/agents.yaml has correct provider ordering and valid models."""
 from pathlib import Path
 import yaml
 
@@ -13,39 +9,48 @@ def _config():
 
 
 def test_all_agents_have_groq_as_primary():
-    """Groq must be first in every agent chain — it is the fastest provider."""
     cfg = _config()
     for agent_name, agent_cfg in cfg["agents"].items():
         first = agent_cfg["providers"][0]["provider"]
         assert first == "groq", (
-            f"Agent '{agent_name}' has '{first}' as primary — should be 'groq' "
-            f"(Groq responds in 1-3s; slow primaries cause 20-minute timeouts)"
+            f"Agent '{agent_name}' primary is '{first}' — should be 'groq' (fastest free tier)"
         )
 
 
-def test_all_agents_have_gemini_fallback():
-    """Gemini should appear as a fallback in every agent chain."""
+def test_all_agents_have_nvidia_as_second():
     cfg = _config()
     for agent_name, agent_cfg in cfg["agents"].items():
-        providers = [p["provider"] for p in agent_cfg["providers"]]
-        assert "gemini" in providers, (
-            f"Agent '{agent_name}' has no Gemini fallback: {providers}"
+        second = agent_cfg["providers"][1]["provider"]
+        assert second == "nvidia", (
+            f"Agent '{agent_name}' second provider is '{second}' — should be 'nvidia' "
+            f"(100+ models, OpenAI-compatible, free at build.nvidia.com)"
         )
+
+
+def test_nvidia_base_url_correct():
+    cfg = _config()
+    for agent_name, agent_cfg in cfg["agents"].items():
+        for p in agent_cfg["providers"]:
+            if p["provider"] == "nvidia":
+                assert "integrate.api.nvidia.com/v1" in p["base_url"], (
+                    f"Agent '{agent_name}' NVIDIA base_url wrong: {p['base_url']}"
+                )
+                assert p["api_key_env"] == "NVIDIA_API_KEY", (
+                    f"Agent '{agent_name}' NVIDIA key env wrong: {p['api_key_env']}"
+                )
 
 
 def test_groq_before_gemini_in_all_chains():
-    """Groq must come before Gemini in every chain (Groq is primary)."""
     cfg = _config()
     for agent_name, agent_cfg in cfg["agents"].items():
         providers = [p["provider"] for p in agent_cfg["providers"]]
-        if "gemini" in providers:
+        if "gemini" in providers and "groq" in providers:
             assert providers.index("groq") < providers.index("gemini"), (
                 f"Agent '{agent_name}': groq must come before gemini"
             )
 
 
 def test_cerebras_model_is_valid():
-    """Cerebras model must be one of their supported model IDs."""
     cfg = _config()
     valid = {"llama-3.3-70b", "llama3.1-8b", "llama-3.1-8b"}
     for agent_name, agent_cfg in cfg["agents"].items():
