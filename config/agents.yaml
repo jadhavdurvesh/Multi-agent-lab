@@ -1,15 +1,23 @@
 # Agent → provider fallback chain.
-# Groq is first: responses in 1-3 seconds, high free-tier daily quota.
-# Gemini is fallback: slower (5-30s) but larger context window.
-# Per-request timeout is 20s — if a provider hangs, it fails fast.
 #
-# Free tier limits (approximate, check provider docs):
-#   Groq:     14,400 req/day, 30 req/min per model
-#   Gemini:   1,500 req/day per key (we have 2 keys = 3,000/day)
-#   Cerebras: ~1,000 req/day
+# Provider ordering (fastest to slowest for free tier):
+#   1. Groq        — 1-3s response, 14,400 req/day free, most reliable
+#   2. NVIDIA NIM  — 1-5s response, ~40 RPM free, 100+ models including
+#                    coding-specialist Qwen and reasoning Nemotron
+#   3. Gemini      — 5-30s response, 1,500 req/day per key
+#   4. Cerebras    — 1-3s response but lower daily quota
 #
-# To add GEMINI_API_KEY_2: get a second key from aistudio.google.com
-# with a different Google account and add it to repo secrets.
+# NVIDIA NIM key note: some models need a one-time per-family registration.
+# If you get 403, go to build.nvidia.com/models, find the model, click
+# "Try API" to accept terms — then your nvapi- key works for it.
+# Model names also shift (Kimi K2 → K2.5 → K2.6). If a model 404s,
+# swap to the latest slug from build.nvidia.com/models.
+#
+# Get free keys:
+#   Groq:   console.groq.com/keys   (no card, most stable)
+#   NVIDIA: build.nvidia.com        (no card, 100+ models)
+#   Gemini: aistudio.google.com/apikey
+#   Cerebras: inference.cerebras.ai
 
 agents:
   architect:
@@ -18,6 +26,10 @@ agents:
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
+      - provider: nvidia
+        base_url: https://integrate.api.nvidia.com/v1
+        api_key_env: NVIDIA_API_KEY
+        model: meta/llama-3.3-70b-instruct
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
@@ -37,6 +49,10 @@ agents:
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
+      - provider: nvidia
+        base_url: https://integrate.api.nvidia.com/v1
+        api_key_env: NVIDIA_API_KEY
+        model: nvidia/llama-3.3-nemotron-super-49b-v1
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
@@ -56,6 +72,10 @@ agents:
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
+      - provider: nvidia
+        base_url: https://integrate.api.nvidia.com/v1
+        api_key_env: NVIDIA_API_KEY
+        model: qwen/qwen2.5-coder-32b-instruct  # coding specialist — best for writing files
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
@@ -74,7 +94,11 @@ agents:
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
-        model: llama-3.1-8b-instant
+        model: llama-3.1-8b-instant  # fast + light — tester just runs commands, doesn't need 70B
+      - provider: nvidia
+        base_url: https://integrate.api.nvidia.com/v1
+        api_key_env: NVIDIA_API_KEY
+        model: meta/llama-3.1-8b-instruct
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
@@ -90,6 +114,10 @@ agents:
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
         model: llama-3.3-70b-versatile
+      - provider: nvidia
+        base_url: https://integrate.api.nvidia.com/v1
+        api_key_env: NVIDIA_API_KEY
+        model: nvidia/llama-3.3-nemotron-super-49b-v1  # NVIDIA's reasoning model — good for code review
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY

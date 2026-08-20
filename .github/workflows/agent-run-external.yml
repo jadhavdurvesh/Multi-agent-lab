@@ -598,11 +598,12 @@ jobs:
           echo ""
           echo "=== API Keys ==="
           [ -n "$GROQ_API_KEY" ]     && echo "  GROQ_API_KEY:      SET" || echo "  GROQ_API_KEY:      NOT SET ⚠"
+          [ -n "$NVIDIA_API_KEY" ]   && echo "  NVIDIA_API_KEY:    SET" || echo "  NVIDIA_API_KEY:    NOT SET ⚠"
           [ -n "$GEMINI_API_KEY" ]   && echo "  GEMINI_API_KEY:    SET" || echo "  GEMINI_API_KEY:    NOT SET ⚠"
           [ -n "$GEMINI_API_KEY_2" ] && echo "  GEMINI_API_KEY_2:  SET" || echo "  GEMINI_API_KEY_2:  NOT SET ⚠"
           [ -n "$CEREBRAS_API_KEY" ] && echo "  CEREBRAS_API_KEY:  SET" || echo "  CEREBRAS_API_KEY:  NOT SET ⚠"
           echo ""
-          if [ -z "$GROQ_API_KEY" ] && [ -z "$GEMINI_API_KEY" ] && [ -z "$CEREBRAS_API_KEY" ]; then
+          if [ -z "$GROQ_API_KEY" ] && [ -z "$NVIDIA_API_KEY" ] && [ -z "$GEMINI_API_KEY" ] && [ -z "$CEREBRAS_API_KEY" ]; then
             echo "FATAL: No AI provider API keys configured."
             echo ""
             echo "This is why every run fails in ~1 second — every provider"
@@ -611,8 +612,11 @@ jobs:
             echo "Fix: add at least one key to"
             echo "Multi-agent-lab → Settings → Secrets → Actions:"
             echo ""
-            echo "  GROQ_API_KEY  (recommended — free, fast, generous limits)"
-            echo "  Get one at: https://console.groq.com/keys"
+            echo "  GROQ_API_KEY   (recommended — free, 14k req/day)"
+            echo "  https://console.groq.com/keys"
+            echo ""
+            echo "  NVIDIA_API_KEY (100+ models free, no card needed)"
+            echo "  https://build.nvidia.com"
             echo ""
             exit 1
           fi
@@ -632,6 +636,8 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
 
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
