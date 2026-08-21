@@ -87,6 +87,20 @@ class Orchestrator:
         except WallTimeExceeded as e:
             print(f"\n[ORCHESTRATOR] {e}")
             return self._emergency_commit_and_push(branch, task)
+        except RuntimeError as e:
+            msg = str(e)
+            if "All providers exhausted" in msg:
+                print(f"\n[ORCHESTRATOR] All AI providers failed: {msg}")
+                print("[ORCHESTRATOR] Check that your API keys are valid:")
+                print("  GROQ_API_KEY   → console.groq.com/keys")
+                print("  NVIDIA_API_KEY → build.nvidia.com")
+                print("  GEMINI_API_KEY → aistudio.google.com/apikey")
+                import sys; sys.exit(1)
+            raise
+        except Exception as e:
+            print(f"\n[ORCHESTRATOR] Unexpected error: {type(e).__name__}: {e}")
+            print("[ORCHESTRATOR] Attempting emergency commit of partial work...")
+            return self._emergency_commit_and_push(branch, task)
 
     def _run_inner(self, task: str, branch: str) -> str:
         # Step 1: Architect

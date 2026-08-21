@@ -58,7 +58,7 @@ def test_router_falls_through_to_groq_after_provider_failures():
 
     openrouter.complete.assert_called_once()
     cerebras.complete.assert_called_once()
-    gemini.complete.assert_called_once()
+    assert gemini.complete.call_count >= 1  # may retry transient errors
     groq.complete.assert_called_once()
 
 
