@@ -69,6 +69,22 @@ def main() -> None:
         tdd_mode=args.tdd,
         wall_time_limit=args.wall_time,
     )
+    # Quick connectivity test — call the first available provider with a
+    # tiny prompt before spending time on git checkout, architect, etc.
+    # This catches bad/expired keys in <5 seconds with a clear message.
+    print("[PREFLIGHT] Testing provider connectivity...")
+    try:
+        test = router.call("architect", "Reply with: OK", "OK")
+        print(f"[PREFLIGHT] Connected via {test['provider']} ({test['model']}) in {test['latency_s']}s")
+    except RuntimeError as e:
+        print(f"\n[PREFLIGHT] Provider test FAILED: {e}")
+        print("[PREFLIGHT] All configured providers returned errors.")
+        print("  Check your API keys are valid and not expired:")
+        print("  GROQ_API_KEY   → console.groq.com/keys (free, most reliable)")
+        print("  NVIDIA_API_KEY → build.nvidia.com (free, no card)")
+        print("  GEMINI_API_KEY → aistudio.google.com/apikey")
+        import sys; sys.exit(1)
+
     result = orchestrator.run(args.task, branch=args.branch)
     print(f"\n[DONE] {result}")
 
