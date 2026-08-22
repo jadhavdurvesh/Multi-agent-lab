@@ -653,13 +653,17 @@ jobs:
           BRANCH="${{ steps.derive-task.outputs.branch }}-${{ github.run_number }}"
 
 
+          # Capture full output — if the run fails, the log shows exactly why
           python3 main.py \
             --repo "$GITHUB_WORKSPACE/target-repo" \
             --task "${{ steps.derive-task.outputs.task }}" \
             --branch "$BRANCH" \
             --test-command "${{ steps.derive-task.outputs.test_command }}" \
             --wall-time 1080 \
-            --autonomous
+            --autonomous \
+            2>&1 | tee /tmp/agent_run.log
+          # Preserve exit code through the pipe
+          exit ${PIPESTATUS[0]}
 
 
       # ======================================================
