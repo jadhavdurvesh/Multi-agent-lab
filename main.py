@@ -44,10 +44,11 @@ def _test_providers() -> None:
     """
     import requests as _req
     checks = [
-        ("Groq",     "GROQ_API_KEY",     "https://api.groq.com/openai/v1",                      "llama-3.1-8b-instant"),
-        ("NVIDIA",   "NVIDIA_API_KEY",   "https://integrate.api.nvidia.com/v1",                  "meta/llama-3.1-8b-instruct"),
-        ("Gemini",   "GEMINI_API_KEY",   "https://generativelanguage.googleapis.com/v1beta/openai","gemini-2.0-flash"),
-        ("Cerebras", "CEREBRAS_API_KEY", "https://api.cerebras.ai/v1",                           "llama-3.1-8b"),
+        ("Groq",       "GROQ_API_KEY",       "https://api.groq.com/openai/v1",                       "openai/gpt-oss-20b"),
+        ("NVIDIA",     "NVIDIA_API_KEY",     "https://integrate.api.nvidia.com/v1",                   "meta/llama-3.1-8b-instruct"),
+        ("Gemini",     "GEMINI_API_KEY",     "https://generativelanguage.googleapis.com/v1beta/openai","gemini-3.7-flash"),
+        ("OpenRouter", "OPENROUTER_API_KEY", "https://openrouter.ai/api/v1",                          "meta-llama/llama-3.3-70b-instruct:free"),
+        ("Cerebras",   "CEREBRAS_API_KEY",   "https://api.cerebras.ai/v1",                            "llama-3.3-70b"),
     ]
     print("\n[PROVIDERS] Connectivity check:")
     working = []
