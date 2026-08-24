@@ -1,48 +1,29 @@
 from __future__ import annotations
 
+import re
 import json
-from core.parse import extract_file_edits, extract_object
+
 from .base import BaseAgent
 
 SYSTEM = """You are the Developer agent in a multi-agent coding system.
 
-Before outputting your JSON, write a brief THOUGHT section explaining:
-- which files need to change and why
-- which edit mode (str_replace vs full write) you will use for each
-- any edge cases from the spec you are handling
+Output file edits using XML tags — this format never breaks on Python code,
+unlike JSON which breaks when code contains newlines or quotes.
 
-Then output your JSON array of edits.
+For each file to create or modify, use:
 
-You have two editing modes. Choose the right one per file:
-
-MODE A — str_replace (preferred for edits to existing files):
-Use when you need to change a specific section of an existing file.
-Output a JSON array of str_replace operations:
-[
-  {"mode": "str_replace", "path": "src/app.py",
-   "old_str": "exact text to find (must be unique in the file)",
-   "new_str": "replacement text"}
-]
-
-MODE B — full write (required for new files or major rewrites):
-Output a JSON array of full file writes:
-[
-  {"mode": "write", "path": "src/new_file.py", "content": "full file content here"}
-]
-
-You can mix both modes in one response:
-[
-  {"mode": "str_replace", "path": "existing.py", "old_str": "...", "new_str": "..."},
-  {"mode": "write", "path": "tests/test_new.py", "content": "..."}
-]
+<file path="relative/path/to/file.py">
+full file content goes here
+no escaping needed — write code exactly as it should appear in the file
+</file>
 
 Rules:
-- Output ONLY the JSON array. No prose, no markdown fences, no backticks.
-- For str_replace: old_str must appear exactly once in the file.
-- For write: content is the COMPLETE file, not a snippet.
-- Cover the edge cases and include the tests listed in the spec.
-- If new pip packages are needed, add them to requirements.txt with a write operation.
-- If nothing needs changing, output: []
+- Output ONLY the XML file blocks. No prose, no explanation before or after.
+- Include the COMPLETE file content — not a diff, not a snippet.
+- For new dependencies, include a <file path="requirements.txt"> block.
+- Cover the edge cases and tests listed in the spec.
+- Preserve existing code style in files you modify.
+- If nothing needs changing, output: <no_changes/>
 """
 
 
@@ -51,7 +32,10 @@ class DeveloperAgent(BaseAgent):
 
     def implement(self, spec: dict, context_files: list[str]) -> list[dict]:
         context = self._read_context_windowed(context_files)
-        user = f"Technical spec:\n{json.dumps(spec, indent=2)}\n\nRelevant files:\n{context}"
+        user = (
+            f"Technical spec:\n{json.dumps(spec, indent=2)}\n\n"
+            f"Current file contents:\n{context}"
+        )
         return self._call_and_apply(user, spec)
 
     def fix(self, feedback: str, spec: dict) -> list[dict]:
@@ -59,18 +43,14 @@ class DeveloperAgent(BaseAgent):
             f"Your previous implementation of '{spec.get('title')}' needs fixes.\n\n"
             f"Spec approach: {spec.get('approach', '')}\n\n"
             f"Feedback:\n{feedback}\n\n"
-            f"Output a JSON array of str_replace or write operations. No fences, no prose."
+            f"Output corrected files using <file path=\"...\">...</file> XML blocks."
         )
         return self._call_and_apply(user, spec)
 
     def _read_context_windowed(self, paths: list[str]) -> str:
-        """Read relevant files using windowed view (100 lines) to avoid context overflow.
-        Inspired by SWE-agent's file viewer design.
-        """
         chunks = []
         for p in paths:
             try:
-                # Use windowed view for large files, full read for small ones
                 full = self.fs.read_file(p)
                 if len(full.splitlines()) > 100:
                     chunks.append(self.fs.read_file_window(p, window=100))
@@ -82,32 +62,101 @@ class DeveloperAgent(BaseAgent):
 
     def _call_and_apply(self, user: str, spec: dict) -> list[dict]:
         raw = self.ask(SYSTEM, user)
-        operations = extract_file_edits(raw)
-        if not operations:
-            print(f"[DEVELOPER] Warning: no operations parsed for "
-                  f"'{spec.get('title')}'. Raw starts: {raw[:120]!r}")
-            return []
+        edits = self._parse_edits(raw)
+        if not edits:
+            print(f"[DEVELOPER] Warning: no file edits parsed for "
+                  f"'{spec.get('title')}'. Raw starts: {raw[:150]!r}")
+        for edit in edits:
+            try:
+                self.fs.write_file(edit["path"], edit["content"])
+                print(f"[DEVELOPER] Wrote: {edit['path']}")
+            except SyntaxError as e:
+                print(f"[DEVELOPER] Syntax error in {edit['path']}: {e}")
+        return edits
 
-        applied = []
-        for op in operations:
-            mode = op.get("mode", "write")
-            path = op.get("path", "")
+    @staticmethod
+    def _parse_edits(raw: str) -> list[dict]:
+        """Parse <file path="...">content</file> XML blocks.
 
-            if mode == "str_replace":
-                result = self.fs.str_replace(
-                    path, op.get("old_str", ""), op.get("new_str", "")
-                )
-                if result["ok"]:
-                    print(f"[DEVELOPER] str_replace: {path}")
-                    applied.append(op)
-                else:
-                    print(f"[DEVELOPER] str_replace FAILED {path}: {result['error']}")
-            else:
-                result = self.fs.write_file_checked(path, op.get("content", ""))
-                if result["ok"]:
-                    print(f"[DEVELOPER] wrote: {path}")
-                    applied.append(op)
-                else:
-                    print(f"[DEVELOPER] write FAILED {path}: {result.get('error')}")
+        This format is immune to the JSON encoding problem where literal
+        newlines inside the content field break json.loads. Models generate
+        XML file blocks reliably for code-heavy responses.
 
-        return applied
+        Falls back to JSON parsing for backwards compatibility.
+        """
+        edits = []
+
+        # Primary: XML format
+        # Matches <file path="..."> or <file path='...'>
+        xml_pattern = re.compile(
+            r'<file\s+path=["\']([^"\']+)["\']>\s*(.*?)\s*</file>',
+            re.DOTALL,
+        )
+        for match in xml_pattern.finditer(raw):
+            path = match.group(1).strip()
+            content = match.group(2)
+            # Strip one leading newline if present (common in model output)
+            if content.startswith("\n"):
+                content = content[1:]
+            if path:
+                edits.append({"path": path, "content": content})
+
+        if edits:
+            return edits
+
+        # Fallback: JSON format (for older responses / other agents)
+        # Try to fix the common newline-in-string issue before parsing
+        fixed = _repair_json(raw)
+        for text in [raw.strip(), fixed]:
+            # Strip fences
+            fence = re.search(r"^```(?:json)?\s*\n?(.*?)\n?```\s*$", text, re.DOTALL)
+            if fence:
+                text = fence.group(1).strip()
+            try:
+                result = json.loads(text)
+                if isinstance(result, list):
+                    return [e for e in result
+                            if isinstance(e, dict) and "path" in e and "content" in e]
+            except (json.JSONDecodeError, ValueError):
+                pass
+            # Try extracting array from anywhere in the text
+            start, end = text.find("["), text.rfind("]")
+            if start != -1 and end > start:
+                try:
+                    result = json.loads(text[start:end + 1])
+                    if isinstance(result, list):
+                        return [e for e in result
+                                if isinstance(e, dict) and "path" in e and "content" in e]
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
+        return []
+
+
+def _repair_json(text: str) -> str:
+    """Attempt to fix the most common JSON encoding error: literal newlines
+    inside string values. Replaces them with \\n escape sequences.
+    This is heuristic and won't fix all cases, but catches the most common
+    model output pattern.
+    """
+    # Find "content": "..." blocks and escape their contents
+    def escape_content(m: re.Match) -> str:
+        key = m.group(1)
+        value = m.group(2)
+        # Escape characters that break JSON strings
+        value = value.replace("\\", "\\\\")
+        value = value.replace('"', '\\"')
+        value = value.replace("\n", "\\n")
+        value = value.replace("\r", "\\r")
+        value = value.replace("\t", "\\t")
+        return f'"{key}": "{value}"'
+
+    try:
+        return re.sub(
+            r'"(content|new_str|old_str)"\s*:\s*"(.*?)"(?=\s*[,}])',
+            escape_content,
+            text,
+            flags=re.DOTALL,
+        )
+    except Exception:
+        return text
