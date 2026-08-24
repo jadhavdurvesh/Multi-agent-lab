@@ -1,23 +1,19 @@
 # Agent → provider fallback chain.
 #
-# Provider ordering (fastest to slowest for free tier):
-#   1. Groq        — 1-3s response, 14,400 req/day free, most reliable
-#   2. NVIDIA NIM  — 1-5s response, ~40 RPM free, 100+ models including
-#                    coding-specialist Qwen and reasoning Nemotron
-#   3. Gemini      — 5-30s response, 1,500 req/day per key
-#   4. Cerebras    — 1-3s response but lower daily quota
+# ⚠️  Model names expire — always verify at provider docs before relying on them:
+#   Groq:      console.groq.com/docs/models
+#   Gemini:    ai.google.dev/gemini-api/docs/models
+#   NVIDIA:    build.nvidia.com/models
+#   OpenRouter: openrouter.ai/models (filter: Free)
 #
-# NVIDIA NIM key note: some models need a one-time per-family registration.
-# If you get 403, go to build.nvidia.com/models, find the model, click
-# "Try API" to accept terms — then your nvapi- key works for it.
-# Model names also shift (Kimi K2 → K2.5 → K2.6). If a model 404s,
-# swap to the latest slug from build.nvidia.com/models.
-#
-# Get free keys:
-#   Groq:   console.groq.com/keys   (no card, most stable)
-#   NVIDIA: build.nvidia.com        (no card, 100+ models)
-#   Gemini: aistudio.google.com/apikey
-#   Cerebras: inference.cerebras.ai
+# Last verified: 2026-08-23
+# Changes from previous config:
+#   Groq:   llama-3.1-8b-instant + llama-3.3-70b-versatile DISCONTINUED 2026-06-17
+#           → openai/gpt-oss-20b (small/fast) + openai/gpt-oss-120b (large)
+#   Gemini: gemini-2.0-flash DISCONTINUED 2026-06-01
+#           → gemini-3.7-flash
+#   NVIDIA: meta/llama-3.3-70b-instruct times out consistently → use 8b only
+#   Added:  OpenRouter as last-resort fallback (OPENROUTER_API_KEY already set)
 
 agents:
   architect:
@@ -25,76 +21,7 @@ agents:
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
-        model: llama-3.3-70b-versatile
-      - provider: nvidia
-        base_url: https://integrate.api.nvidia.com/v1
-        api_key_env: NVIDIA_API_KEY
-        model: meta/llama-3.3-70b-instruct
-      - provider: gemini
-        base_url: https://generativelanguage.googleapis.com/v1beta/openai
-        api_key_env: GEMINI_API_KEY
-        model: gemini-2.0-flash
-      - provider: gemini_2
-        base_url: https://generativelanguage.googleapis.com/v1beta/openai
-        api_key_env: GEMINI_API_KEY_2
-        model: gemini-2.0-flash
-      - provider: cerebras
-        base_url: https://api.cerebras.ai/v1
-        api_key_env: CEREBRAS_API_KEY
-        model: llama-3.3-70b
-
-  planner:
-    providers:
-      - provider: groq
-        base_url: https://api.groq.com/openai/v1
-        api_key_env: GROQ_API_KEY
-        model: llama-3.3-70b-versatile
-      - provider: nvidia
-        base_url: https://integrate.api.nvidia.com/v1
-        api_key_env: NVIDIA_API_KEY
-        model: nvidia/llama-3.3-nemotron-super-49b-v1
-      - provider: gemini
-        base_url: https://generativelanguage.googleapis.com/v1beta/openai
-        api_key_env: GEMINI_API_KEY
-        model: gemini-2.0-flash
-      - provider: gemini_2
-        base_url: https://generativelanguage.googleapis.com/v1beta/openai
-        api_key_env: GEMINI_API_KEY_2
-        model: gemini-2.0-flash
-      - provider: cerebras
-        base_url: https://api.cerebras.ai/v1
-        api_key_env: CEREBRAS_API_KEY
-        model: llama-3.3-70b
-
-  developer:
-    providers:
-      - provider: groq
-        base_url: https://api.groq.com/openai/v1
-        api_key_env: GROQ_API_KEY
-        model: llama-3.3-70b-versatile
-      - provider: nvidia
-        base_url: https://integrate.api.nvidia.com/v1
-        api_key_env: NVIDIA_API_KEY
-        model: qwen/qwen2.5-coder-32b-instruct  # coding specialist — best for writing files
-      - provider: gemini
-        base_url: https://generativelanguage.googleapis.com/v1beta/openai
-        api_key_env: GEMINI_API_KEY
-        model: gemini-2.0-flash
-      - provider: gemini_2
-        base_url: https://generativelanguage.googleapis.com/v1beta/openai
-        api_key_env: GEMINI_API_KEY_2
-        model: gemini-2.0-flash
-      - provider: cerebras
-        base_url: https://api.cerebras.ai/v1
-        api_key_env: CEREBRAS_API_KEY
-        model: llama-3.3-70b
-
-  tester:
-    providers:
-      - provider: groq
-        base_url: https://api.groq.com/openai/v1
-        api_key_env: GROQ_API_KEY
-        model: llama-3.1-8b-instant  # fast + light — tester just runs commands, doesn't need 70B
+        model: openai/gpt-oss-120b
       - provider: nvidia
         base_url: https://integrate.api.nvidia.com/v1
         api_key_env: NVIDIA_API_KEY
@@ -102,31 +29,100 @@ agents:
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
-        model: gemini-2.0-flash
+        model: gemini-3.7-flash
       - provider: gemini_2
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY_2
-        model: gemini-2.0-flash
+        model: gemini-3.7-flash
+      - provider: openrouter
+        base_url: https://openrouter.ai/api/v1
+        api_key_env: OPENROUTER_API_KEY
+        model: meta-llama/llama-3.3-70b-instruct:free
+
+  planner:
+    providers:
+      - provider: groq
+        base_url: https://api.groq.com/openai/v1
+        api_key_env: GROQ_API_KEY
+        model: openai/gpt-oss-120b
+      - provider: nvidia
+        base_url: https://integrate.api.nvidia.com/v1
+        api_key_env: NVIDIA_API_KEY
+        model: meta/llama-3.1-8b-instruct
+      - provider: gemini
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY
+        model: gemini-3.7-flash
+      - provider: gemini_2
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY_2
+        model: gemini-3.7-flash
+      - provider: openrouter
+        base_url: https://openrouter.ai/api/v1
+        api_key_env: OPENROUTER_API_KEY
+        model: meta-llama/llama-3.3-70b-instruct:free
+
+  developer:
+    providers:
+      - provider: groq
+        base_url: https://api.groq.com/openai/v1
+        api_key_env: GROQ_API_KEY
+        model: openai/gpt-oss-120b
+      - provider: nvidia
+        base_url: https://integrate.api.nvidia.com/v1
+        api_key_env: NVIDIA_API_KEY
+        model: qwen/qwen2.5-coder-32b-instruct
+      - provider: gemini
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY
+        model: gemini-3.7-flash
+      - provider: gemini_2
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY_2
+        model: gemini-3.7-flash
+      - provider: openrouter
+        base_url: https://openrouter.ai/api/v1
+        api_key_env: OPENROUTER_API_KEY
+        model: qwen/qwen3-coder:free
+
+  tester:
+    providers:
+      - provider: groq
+        base_url: https://api.groq.com/openai/v1
+        api_key_env: GROQ_API_KEY
+        model: openai/gpt-oss-20b
+      - provider: nvidia
+        base_url: https://integrate.api.nvidia.com/v1
+        api_key_env: NVIDIA_API_KEY
+        model: meta/llama-3.1-8b-instruct
+      - provider: gemini
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY
+        model: gemini-3.7-flash
+      - provider: gemini_2
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai
+        api_key_env: GEMINI_API_KEY_2
+        model: gemini-3.7-flash
 
   reviewer:
     providers:
       - provider: groq
         base_url: https://api.groq.com/openai/v1
         api_key_env: GROQ_API_KEY
-        model: llama-3.3-70b-versatile
+        model: openai/gpt-oss-120b
       - provider: nvidia
         base_url: https://integrate.api.nvidia.com/v1
         api_key_env: NVIDIA_API_KEY
-        model: nvidia/llama-3.3-nemotron-super-49b-v1  # NVIDIA's reasoning model — good for code review
+        model: meta/llama-3.1-8b-instruct
       - provider: gemini
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY
-        model: gemini-2.0-flash
+        model: gemini-3.7-flash
       - provider: gemini_2
         base_url: https://generativelanguage.googleapis.com/v1beta/openai
         api_key_env: GEMINI_API_KEY_2
-        model: gemini-2.0-flash
-      - provider: cerebras
-        base_url: https://api.cerebras.ai/v1
-        api_key_env: CEREBRAS_API_KEY
-        model: llama-3.3-70b
+        model: gemini-3.7-flash
+      - provider: openrouter
+        base_url: https://openrouter.ai/api/v1
+        api_key_env: OPENROUTER_API_KEY
+        model: meta-llama/llama-3.3-70b-instruct:free
